@@ -28,14 +28,18 @@ const fixTikzjaxPaths = {
           "(0, path_1.join)(__dirname, 'tex')"
         );
         // Fix 2: cache compiled WASM module to avoid recompilation on every render.
-        // Replace: const wasm = await WebAssembly.instantiate(bytecode, { ... });
-        // With a version that compiles once and caches the Module.
+        // IMPORTANT: WebAssembly.instantiate(bytes, imports) returns { module, instance }
+        //            WebAssembly.instantiate(Module, imports) returns Instance only.
+        // We must preserve the { module, instance } shape the caller expects.
         src = src.replace(
-          /const wasm = await WebAssembly\.instantiate\(bytecode,/,
+          /const wasm = await WebAssembly\.instantiate\(bytecode,\s*\{\s*library:\s*library,\s*env:\s*\{\s*memory:\s*memory\s*\},?\s*\}\s*\);/,
           `if (!exports.__cachedWasmModule) {
     exports.__cachedWasmModule = await WebAssembly.compile(bytecode);
 }
-const wasm = await WebAssembly.instantiate(exports.__cachedWasmModule,`
+const wasm = {
+    module: exports.__cachedWasmModule,
+    instance: await WebAssembly.instantiate(exports.__cachedWasmModule, { library: library, env: { memory: memory } }),
+};`
         );
         return { contents: src, loader: "js" };
       }
