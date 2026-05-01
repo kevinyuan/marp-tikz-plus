@@ -101,6 +101,9 @@ export class MarpView extends ItemView {
             if (entry?.svg) {
                 return `<div class="tikz-in-marp">${entry.svg}</div>`;
             }
+            if (entry?.error) {
+                return `<div class="tikz-error tikz-in-marp"><div class="tikz-error-title">⚠ TikZ Error</div><pre class="tikz-error-message">${_escapeHtml(entry.error)}</pre></div>`;
+            }
             uncached.push({ hash, source });
             return `<div class="tikz-placeholder">⏳ Rendering TikZ…</div>`;
         });
@@ -487,4 +490,12 @@ export class MarpView extends ItemView {
     async onClose(): Promise<void> {
         if (this._pendingUpdate) { clearTimeout(this._pendingUpdate); }
     }
+}
+
+function _escapeHtml(text: string): string {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
