@@ -9,8 +9,6 @@ import { MarpTikzSettings, DEFAULT_SETTINGS } from './src/settings/types';
 import { MarpTikzSettingsTab } from './src/settings/SettingsTab';
 import { isMarpFile } from './src/marp/slideParser';
 import { MarpView, MARP_VIEW_TYPE } from './src/marp/MarpView';
-import { SlideNavigatorView, SLIDE_NAVIGATOR_VIEW_TYPE } from './src/marp/SlideNavigator';
-import { SpeakerNotesView, SPEAKER_NOTES_VIEW_TYPE } from './src/marp/SpeakerNotes';
 
 export default class MarpTikzPlugin extends Plugin {
     settings!: MarpTikzSettings;
@@ -43,8 +41,6 @@ export default class MarpTikzPlugin extends Plugin {
 
         // Register views
         this.registerView(MARP_VIEW_TYPE, (leaf) => new MarpView(leaf, this));
-        this.registerView(SLIDE_NAVIGATOR_VIEW_TYPE, (leaf) => new SlideNavigatorView(leaf, this));
-        this.registerView(SPEAKER_NOTES_VIEW_TYPE, (leaf) => new SpeakerNotesView(leaf));
 
         // Register TikZ markdown post-processor
         this.registerMarkdownPostProcessor(
@@ -214,12 +210,6 @@ export default class MarpTikzPlugin extends Plugin {
         this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE).forEach(leaf => {
             (leaf.view as MarpView).scheduleUpdate();
         });
-        this.app.workspace.getLeavesOfType(SLIDE_NAVIGATOR_VIEW_TYPE).forEach(leaf => {
-            (leaf.view as SlideNavigatorView).scheduleUpdate();
-        });
-        this.app.workspace.getLeavesOfType(SPEAKER_NOTES_VIEW_TYPE).forEach(leaf => {
-            (leaf.view as SpeakerNotesView).refresh();
-        });
     }
 
     private async _openMarpView(file: TFile): Promise<void> {
@@ -235,24 +225,9 @@ export default class MarpTikzPlugin extends Plugin {
         this.app.workspace.revealLeaf(leaf);
     }
 
-    private async _openSlideNavigator(file: TFile): Promise<void> {
-        let leaf = this.app.workspace.getLeavesOfType(SLIDE_NAVIGATOR_VIEW_TYPE)[0];
-        if (!leaf) {
-            leaf = this.app.workspace.getLeftLeaf(false) ?? this.app.workspace.getLeaf('split');
-            await leaf.setViewState({ type: SLIDE_NAVIGATOR_VIEW_TYPE, active: true });
-        }
-        (leaf.view as SlideNavigatorView).setFile(file);
-        this.app.workspace.revealLeaf(leaf);
-    }
-
-    private async _openSpeakerNotes(file: TFile): Promise<void> {
-        let leaf = this.app.workspace.getLeavesOfType(SPEAKER_NOTES_VIEW_TYPE)[0];
-        if (!leaf) {
-            leaf = this.app.workspace.getLeaf('split');
-            await leaf.setViewState({ type: SPEAKER_NOTES_VIEW_TYPE, active: true });
-        }
-        await (leaf.view as SpeakerNotesView).setFile(file);
-        this.app.workspace.revealLeaf(leaf);
+    private _getMarpView(): MarpView | null {
+        const leaves = this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE);
+        return leaves.length > 0 ? (leaves[0].view as MarpView) : null;
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -270,23 +245,22 @@ export default class MarpTikzPlugin extends Plugin {
         });
 
         this.addCommand({
-            id: 'open-slide-navigator',
-            name: 'Open Slide Navigator',
-            callback: async () => {
-                const file = this._getActiveMdFile();
-                if (!file) { new Notice('Open a Markdown file first.'); return; }
-                if (!await this._isMarpFile(file)) { new Notice('Not a Marp file.'); return; }
-                await this._openSlideNavigator(file);
+            id: 'toggle-slide-navigator',
+            name: 'Toggle Slide Navigator',
+            callback: () => {
+                const view = this._getMarpView();
+                if (!view) { new Notice('Open Marp preview first.'); return; }
+                view.toggleNavigator();
             },
         });
 
         this.addCommand({
-            id: 'open-speaker-notes',
-            name: 'Open Speaker Notes',
-            callback: async () => {
-                const file = this._getActiveMdFile();
-                if (!file) { new Notice('Open a Markdown file first.'); return; }
-                await this._openSpeakerNotes(file);
+            id: 'toggle-speaker-notes',
+            name: 'Toggle Speaker Notes',
+            callback: () => {
+                const view = this._getMarpView();
+                if (!view) { new Notice('Open Marp preview first.'); return; }
+                view.toggleNotes();
             },
         });
 
@@ -426,12 +400,6 @@ export default class MarpTikzPlugin extends Plugin {
 
             this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE).forEach(l => {
                 (l.view as MarpView).setFile(file);
-            });
-            this.app.workspace.getLeavesOfType(SLIDE_NAVIGATOR_VIEW_TYPE).forEach(l => {
-                (l.view as SlideNavigatorView).setFile(file);
-            });
-            this.app.workspace.getLeavesOfType(SPEAKER_NOTES_VIEW_TYPE).forEach(l => {
-                (l.view as SpeakerNotesView).setFile(file);
             });
         }));
     }

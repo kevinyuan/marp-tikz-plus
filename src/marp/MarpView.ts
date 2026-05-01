@@ -46,6 +46,27 @@ export class MarpView extends ItemView {
         this._scheduleUpdate();
     }
 
+    toggleNavigator(): void {
+        const sidebar = this.contentEl.querySelector<HTMLElement>('.marp-sidebar');
+        const toggleBtn = this.contentEl.querySelector<HTMLElement>('.marp-sidebar-toggle');
+        if (!sidebar) { return; }
+        this._sidebarVisible = !this._sidebarVisible;
+        sidebar.classList.toggle('collapsed', !this._sidebarVisible);
+        if (this._sidebarVisible) {
+            sidebar.style.width = SIDEBAR_WIDTHS[this._viewMode] + 'px';
+        }
+        toggleBtn?.classList.toggle('hidden', this._sidebarVisible);
+    }
+
+    toggleNotes(): void {
+        const notesPanel = this.contentEl.querySelector<HTMLElement>('.marp-notes-panel');
+        const notesBtn = this.contentEl.querySelector<HTMLElement>('.marp-toolbar-btn[title="Speaker notes"]');
+        if (!notesPanel) { return; }
+        this._notesVisible = !this._notesVisible;
+        notesPanel.classList.toggle('collapsed', !this._notesVisible);
+        notesBtn?.classList.toggle('active', this._notesVisible);
+    }
+
     private _scheduleUpdate(): void {
         if (this._pendingUpdate) { clearTimeout(this._pendingUpdate); }
         this._pendingUpdate = setTimeout(() => {
