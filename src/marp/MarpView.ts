@@ -57,17 +57,26 @@ export class MarpView extends ItemView {
         const { Marp } = require('@marp-team/marp-core');
         const marp = new Marp({ html: true });
 
-        // Substitute cached TikZ SVGs before Marp renders
+        // Substitute cached TikZ SVGs; collect uncached blocks for background render
         const tikzRe = /```tikz\s*\n([\s\S]*?)```/g;
-        const processedContent = content.replace(tikzRe, (_match: string, source: string) => {
-            const hash = generateHash(source.trim());
+        const uncached: Array<{ hash: string; source: string }> = [];
+        const processedContent = content.replace(tikzRe, (_match: string, raw: string) => {
+            const source = raw.trim();
+            const hash = generateHash(source);
             const cached = this.plugin.renderer.getSvg(hash);
             if (cached?.svg) {
-                // Wrap in a div so Marp (html:true) passes it through
                 return `<div class="tikz-in-marp">${cached.svg}</div>`;
             }
+            uncached.push({ hash, source });
             return `<div class="tikz-placeholder">⏳ Rendering TikZ…</div>`;
         });
+
+        // Kick off rendering for uncached blocks; re-render this view after each one
+        if (uncached.length > 0) {
+            this.plugin.renderer
+                .renderBlocks(uncached, () => this._scheduleUpdate())
+                .catch(e => console.error('[MarpView] TikZ render error', e));
+        }
 
         let html: string;
         let css: string;
