@@ -1,0 +1,13 @@
+{
+  "cache": {
+    "index": [],
+    "entries": {}
+  },
+  "settings": {
+    "invertColorsInDarkMode": true,
+    "renderTimeout": 15000,
+    "marpPptxNotes": true,
+    "exportFormat": "pptx",
+    "cacheVersion": 1
+  }
+}

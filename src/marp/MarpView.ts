@@ -54,18 +54,19 @@ export class MarpView extends ItemView {
             return;
         }
 
-        let { Marp } = require('@marp-team/marp-core');
+        const { Marp } = require('@marp-team/marp-core');
         const marp = new Marp({ html: true });
 
-        // Replace tikz code blocks with cached SVGs before Marp renders
+        // Substitute cached TikZ SVGs before Marp renders
         const tikzRe = /```tikz\s*\n([\s\S]*?)```/g;
         const processedContent = content.replace(tikzRe, (_match: string, source: string) => {
             const hash = generateHash(source.trim());
             const cached = this.plugin.renderer.getSvg(hash);
             if (cached?.svg) {
+                // Wrap in a div so Marp (html:true) passes it through
                 return `<div class="tikz-in-marp">${cached.svg}</div>`;
             }
-            return '<div class="tikz-in-marp tikz-placeholder">⏳ Rendering TikZ…</div>';
+            return `<div class="tikz-placeholder">⏳ Rendering TikZ…</div>`;
         });
 
         let html: string;
@@ -79,28 +80,38 @@ export class MarpView extends ItemView {
             return;
         }
 
-        // Split into slides (Marp wraps each in <section>)
-        const slideRe = /<section[^>]*>([\s\S]*?)<\/section>/g;
-        const slideHtmls: string[] = [];
-        let m: RegExpExecArray | null;
-        while ((m = slideRe.exec(html)) !== null) {
-            slideHtmls.push(m[0]);
-        }
+        // Strip the polyfill <script> Marp injects (won't run inside Obsidian anyway)
+        html = html.replace(/<script[\s\S]*?<\/script>/gi, '');
 
         this.contentEl.empty();
+
+        // Marp's CSS is fully scoped to `div.marpit > svg > foreignObject > section`
+        // — safe to inject directly without iframe isolation
         const style = this.contentEl.createEl('style');
         style.textContent = css + `
-            .marp-tikz-view { overflow-y: auto; background: var(--background-secondary); padding: 16px; }
-            .marp-slide-wrapper { margin: 0 auto 24px; max-width: 720px; }
-            .marp-slide-wrapper section { width: 100%; aspect-ratio: 16/9; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,.25); border-radius: 4px; }
+            .marp-tikz-view {
+                overflow-y: auto;
+                padding: 16px;
+                background: var(--background-secondary);
+            }
+            /* Each slide is an SVG with viewBox="0 0 1280 720" — scales naturally */
+            .marp-tikz-view svg[data-marpit-svg] {
+                width: 100%;
+                height: auto;
+                display: block;
+                margin-bottom: 16px;
+                box-shadow: 0 2px 14px rgba(0,0,0,.3);
+                border-radius: 4px;
+            }
+            /* TikZ SVG inside slide */
+            .marp-tikz-view .tikz-in-marp svg {
+                max-width: 100%;
+                height: auto;
+            }
         `;
 
-        const container = this.contentEl.createDiv({ cls: 'marp-slides-container' });
-        slideHtmls.forEach((slideHtml, i) => {
-            const wrapper = container.createDiv({ cls: 'marp-slide-wrapper' });
-            wrapper.setAttribute('data-slide', String(i + 1));
-            wrapper.innerHTML = slideHtml;
-        });
+        const container = this.contentEl.createDiv();
+        container.innerHTML = html;
     }
 
     async onClose(): Promise<void> {
