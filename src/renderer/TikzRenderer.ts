@@ -78,7 +78,8 @@ export class TikzRenderer {
 
     private async _doRender(source: string): Promise<string> {
         await this._ensureLoaded();
-        const tex2svg = (await import('node-tikzjax')).default;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const tex2svg = require('node-tikzjax').default as (src: string, opts: Record<string, unknown>) => Promise<string>;
 
         let processed = preprocessSource(source);
         processed = processed.replace(
@@ -147,7 +148,8 @@ export class TikzRenderer {
         if (this._tikzjaxLoadPromise) { return this._tikzjaxLoadPromise; }
         this._tikzjaxLoadPromise = (async () => {
             this.log('Loading node-tikzjax...');
-            await import('node-tikzjax');
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            require('node-tikzjax');
             this._tikzjaxLoaded = true;
             this.log('node-tikzjax loaded');
         })();
