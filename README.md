@@ -186,6 +186,10 @@ Marp renders slides at 1280×720. Diagrams may appear smaller than in standard r
 
 **PPTX export fails** — Confirm `marp-cli` and LibreOffice are installed and accessible from your `PATH`.
 
+## Known Issues / TODO
+
+- **TikZ rendering broken in Obsidian** — All `tikz` blocks fail with "Invalid package /Applications/Obsidian.app/Contents/Resources/electron". Root cause: `__dirname` in Electron's renderer process resolves to the Electron binary directory instead of the plugin root, so `node-tikzjax` bootstrap cannot locate the `tex/` files. Attempted fix: patch bootstrap.js at bundle time to use `globalThis.__MARP_TIKZ_TEX_DIR` (set from Obsidian Plugin API in `onload()`). Status: patch applied but rendering still fails — likely the `load()` function hits another `__dirname`-based path or the `tex_files.tar.gz` extraction is failing silently. Next: add more granular logging inside bootstrap's `load()` to pinpoint which file operation fails.
+
 ## Acknowledgments
 
 - [node-tikzjax](https://github.com/drgrice1/node-tikzjax) by @drgrice1 — WASM-based TeX rendering engine

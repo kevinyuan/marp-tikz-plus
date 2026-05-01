@@ -22,6 +22,14 @@ export default class MarpTikzPlugin extends Plugin {
     async onload(): Promise<void> {
         await this.loadSettings();
 
+        // Set TEX_DIR for bootstrap.js before any rendering.
+        // __dirname in Electron's renderer may resolve to the Electron binary
+        // directory; use the Obsidian Plugin API for the correct plugin path.
+        const vaultBase = (this.app.vault.adapter as any).basePath as string;
+        const pluginRelDir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
+        (globalThis as any).__MARP_TIKZ_TEX_DIR = path.join(vaultBase, pluginRelDir, 'tex');
+        console.log('[MarpTikz] TEX_DIR set:', (globalThis as any).__MARP_TIKZ_TEX_DIR);
+
         this.parser = new DocumentParser();
         this.cacheManager = new CacheManager(
             (data) => this.saveData({ cache: data, settings: this.settings }),

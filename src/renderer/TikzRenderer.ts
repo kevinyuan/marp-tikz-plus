@@ -82,7 +82,9 @@ export class TikzRenderer {
     private async _doRender(source: string): Promise<string> {
         await this._ensureLoaded();
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const tex2svg = require('node-tikzjax').default as (src: string, opts: Record<string, unknown>) => Promise<string>;
+        const nodeTikzjax = require('node-tikzjax');
+        const tex2svg = nodeTikzjax.default as (src: string, opts: Record<string, unknown>) => Promise<string>;
+        const loadFn = nodeTikzjax.load as (() => Promise<void>) | undefined;
 
         let processed = preprocessSource(source);
         processed = processed.replace(
@@ -91,15 +93,20 @@ export class TikzRenderer {
         );
 
         const timeout = this.getTimeout();
+
+        this.log('tex: loading WASM files...');
+        if (loadFn) { await loadFn(); }
+        this.log('tex: WASM files loaded, starting TeX...');
+
         // disableSanitize skips jsdom in dvi2svg — jsdom uses the deprecated vm
         // module and is very slow in Electron's renderer process. We extract the
         // SVG element ourselves using a lightweight regex instead.
         const svgPromise = tex2svg(processed, {
-            showConsole: false,
+            showConsole: true,
             texPackages: this._detectPackages(processed),
             tikzLibraries: this._detectTikzLibraries(processed).join(','),
             disableSanitize: true,
-        }).then(_extractSvg);
+        }).then(result => { this.log('tex: TeX done, extracting SVG...'); return _extractSvg(result); });
 
         let timer!: ReturnType<typeof setTimeout>;
         const timeoutPromise = new Promise<never>((_, reject) => {

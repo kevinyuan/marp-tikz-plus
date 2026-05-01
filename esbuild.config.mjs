@@ -22,10 +22,39 @@ const fixTikzjaxPaths = {
       { filter: /node-tikzjax\/dist\/bootstrap\.js$/ },
       async (args) => {
         let src = await fs.promises.readFile(args.path, "utf8");
-        // Fix 1: tex path
+        // Fix 1: tex path.
+        // __dirname in Electron's renderer may resolve to the Electron binary directory
+        // rather than the plugin root. We let main.ts set globalThis.__MARP_TIKZ_TEX_DIR
+        // to the verified correct path; fall back to __dirname-relative 'tex' otherwise.
         src = src.replace(
-          /\(0,\s*path_1\.join\)\s*\(\s*__dirname\s*,\s*'\.\.\/tex'\s*\)/,
-          "(0, path_1.join)(__dirname, 'tex')"
+          /const TEX_DIR = \(0,\s*path_1\.join\)\s*\(\s*__dirname\s*,\s*['"]\.\.\/tex['"]\s*\)\s*;/,
+          "const TEX_DIR = (typeof globalThis.__MARP_TIKZ_TEX_DIR === 'string' && globalThis.__MARP_TIKZ_TEX_DIR) || (0, path_1.join)(__dirname, 'tex'); console.log('[MarpTikz-boot] TEX_DIR:', TEX_DIR);"
+        );
+        // Fix 3: replace async stream loading with synchronous readFileSync+gunzipSync.
+        // The original pipe()-based approach silently hangs in Electron's renderer process
+        // when createReadStream emits an error — Node.js pipe() does not forward source
+        // stream errors to the destination, so stream2buffer's Promise never resolves.
+        // readFileSync+gunzipSync avoid streams entirely and throw clearly on failure.
+        src = src.replace(
+          /if \(!coredump\) \{\s*const stream = \(0, fs_1\.createReadStream\)\(COREDUMP_PATH\)\.pipe\(\(0, zlib_1\.createGunzip\)\(\)\);\s*coredump = await stream2buffer\(stream\);\s*\}/,
+          `if (!coredump) { coredump = zlib_1.gunzipSync(fs_1.readFileSync(COREDUMP_PATH)); }`
+        );
+        src = src.replace(
+          /if \(!bytecode\) \{\s*const stream = \(0, fs_1\.createReadStream\)\(BYTECODE_PATH\)\.pipe\(\(0, zlib_1\.createGunzip\)\(\)\);\s*bytecode = await stream2buffer\(stream\);\s*\}/,
+          `if (!bytecode) { bytecode = zlib_1.gunzipSync(fs_1.readFileSync(BYTECODE_PATH)); }`
+        );
+        // Fix 4: add error forwarding in extractTexFilesToMemory — same pipe() issue.
+        // Replace the stream chain + await Promise block with one that forwards errors.
+        src = src.replace(
+          /const stream = \(0, fs_1\.createReadStream\)\(TEX_FILES_PATH\)\.pipe\(\(0, zlib_1\.createGunzip\)\(\)\)\.pipe\(\(0, tar_fs_1\.extract\)\(TEX_FILES_EXTRACTED_PATH,\s*\{[\s\S]*?\}\)\);[\s\S]*?await new Promise\(\(resolve, reject\) => \{[\s\S]*?stream\.on\(["']finish["'], resolve\);[\s\S]*?stream\.on\(["']error["'], reject\);[\s\S]*?\}\);/,
+          `await new Promise((resolve, reject) => {
+        const _src = (0, fs_1.createReadStream)(TEX_FILES_PATH);
+        const _gz = (0, zlib_1.createGunzip)();
+        const _tar = (0, tar_fs_1.extract)(TEX_FILES_EXTRACTED_PATH, { fs });
+        _src.on('error', reject); _gz.on('error', reject);
+        _tar.on('finish', resolve); _tar.on('error', reject);
+        _src.pipe(_gz).pipe(_tar);
+    });`
         );
         // Fix 2: cache compiled WASM module to avoid recompilation on every render.
         // IMPORTANT: WebAssembly.instantiate(bytes, imports) returns { module, instance }
