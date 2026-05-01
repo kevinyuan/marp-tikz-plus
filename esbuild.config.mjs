@@ -2,6 +2,9 @@ import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
 import fs from "fs";
+import { createRequire } from "module";
+
+const _require = createRequire(import.meta.url);
 
 const prod = process.argv[2] === "production";
 
@@ -27,6 +30,22 @@ const fixTikzjaxPaths = {
   },
 };
 
+// Patch require("punycode/") — tr46/tough-cookie use this pattern to explicitly
+// target the npm punycode package rather than the deprecated Node built-in.
+// esbuild leaves it as an external require, which fails at runtime in Electron
+// because "punycode/" (trailing slash) isn't a valid built-in specifier.
+// Intercept and resolve to the npm package file so esbuild bundles it.
+const PUNYCODE_PATH = _require.resolve("punycode/punycode.js");
+
+const fixPunycode = {
+  name: "fix-punycode",
+  setup(build) {
+    build.onResolve({ filter: /^punycode\/$/ }, () => ({
+      path: PUNYCODE_PATH,
+    }));
+  },
+};
+
 const context = await esbuild.context({
   entryPoints: ["main.ts"],
   bundle: true,
@@ -46,7 +65,7 @@ const context = await esbuild.context({
     "@lezer/lr",
     ...builtins,
   ],
-  plugins: [fixTikzjaxPaths],
+  plugins: [fixTikzjaxPaths, fixPunycode],
   platform: "node",
   format: "cjs",
   target: "es2018",
