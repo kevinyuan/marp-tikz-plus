@@ -59,6 +59,9 @@ export class TikzRenderer {
 
     private async _renderSingleBlock(hash: string, source: string): Promise<void> {
         const p = this._renderChain.then(async () => {
+            // Guard: another renderBlocks call may have already rendered this hash
+            // while this item was queued in the chain.
+            if (this._svgCache.has(hash)) { return; }
             this.log(`block ${hash.slice(0, 8)} — rendering...`);
             try {
                 const svg = await this._doRender(source);

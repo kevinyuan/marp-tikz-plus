@@ -64,6 +64,10 @@ export default class MarpTikzPlugin extends Plugin {
     async loadSettings(): Promise<void> {
         const saved = await this.loadData();
         this.settings = Object.assign({}, DEFAULT_SETTINGS, saved?.settings ?? {});
+        // Migrate: old default was 15000ms; bump to new default if unchanged.
+        if (this.settings.renderTimeout === 15000) {
+            this.settings.renderTimeout = DEFAULT_SETTINGS.renderTimeout;
+        }
     }
 
     async saveSettings(): Promise<void> {
