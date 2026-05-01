@@ -88,11 +88,15 @@ export class TikzRenderer {
         );
 
         const timeout = this.getTimeout();
+        // disableSanitize skips jsdom in dvi2svg — jsdom uses the deprecated vm
+        // module and is very slow in Electron's renderer process. We extract the
+        // SVG element ourselves using a lightweight regex instead.
         const svgPromise = tex2svg(processed, {
             showConsole: false,
             texPackages: this._detectPackages(processed),
             tikzLibraries: this._detectTikzLibraries(processed).join(','),
-        });
+            disableSanitize: true,
+        }).then(_extractSvg);
 
         let timer!: ReturnType<typeof setTimeout>;
         const timeoutPromise = new Promise<never>((_, reject) => {
@@ -149,13 +153,7 @@ export class TikzRenderer {
         this._tikzjaxLoadPromise = (async () => {
             this.log('Loading node-tikzjax...');
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const tikzjax = require('node-tikzjax');
-            // Pre-load WASM files into memory (reads core.dump.gz, tex.wasm.gz,
-            // extracts tex_files.tar.gz into memfs). This happens once and is
-            // cached by the module, so subsequent renders skip file I/O.
-            if (typeof tikzjax.load === 'function') {
-                await tikzjax.load();
-            }
+            require('node-tikzjax');
             this._tikzjaxLoaded = true;
             this.log('node-tikzjax loaded');
         })();
@@ -167,4 +165,10 @@ export class TikzRenderer {
         this._tikzjaxLoadPromise = null;
         this._svgCache.clear();
     }
+}
+
+/** Extract the <svg>...</svg> element from raw dvi2html output. */
+function _extractSvg(raw: string): string {
+    const m = raw.match(/<svg[\s\S]*<\/svg>/i);
+    return m ? m[0] : raw;
 }
