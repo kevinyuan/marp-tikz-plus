@@ -1,4 +1,5 @@
 export function preprocessSource(source: string): string {
+    // Remove non-breaking spaces (U+00A0)
     let processed = source.replace(/ /g, ' ');
 
     const lines = processed.split('\n')

@@ -73,8 +73,8 @@ function convertNode(node: Node): string {
             // Convert MathML spacing to em-space chars; \qquad=2em, \quad=1em, etc.
             const w = el.getAttribute('width') || '';
             const em = parseFloat(w);
-            if (!isNaN(em) && em >= 1.5) { return makeRun('  ', 'p'); }
-            if (!isNaN(em) && em >= 0.5) { return makeRun(' ', 'p'); }
+            if (!isNaN(em) && em >= 1.5) { return makeRun('\u2003\u2003', 'p'); }
+            if (!isNaN(em) && em >= 0.5) { return makeRun('\u2003', 'p'); }
             return '';
         }
 
@@ -208,16 +208,16 @@ function makeMsubsup(el: Element): string {
  */
 const ACCENT_TO_OMML: Record<string, string | null> = {
     '^':      null,       // U+005E → omit (OMML default = U+0302 combining circumflex)
-    'ˆ': null,       // ˆ MODIFIER LETTER CIRCUMFLEX → same as above
-    '~':      '̃',   // tilde → combining tilde
-    '˜': '̃',   // ˜ SMALL TILDE → combining tilde
-    '´': '́',   // ´ ACUTE ACCENT → combining acute
-    '`': '̀',   // ` GRAVE ACCENT → combining grave
-    '¨': '̈',   // ¨ DIAERESIS → combining diaeresis (ddot)
-    '˙': '̇',   // ˙ DOT ABOVE → combining dot above (dot)
-    '‾': '̅',   // ‾ OVERLINE → combining overline (bar)
-    '→': '⃗',   // → RIGHT ARROW → combining right arrow above (vec)
-    '←': '⃖',   // ← LEFT ARROW → combining left arrow above
+    '\u02C6': null,       // ˆ MODIFIER LETTER CIRCUMFLEX → same as above
+    '~':      '\u0303',   // tilde → combining tilde
+    '\u02DC': '\u0303',   // ˜ SMALL TILDE → combining tilde
+    '\u00B4': '\u0301',   // ´ ACUTE ACCENT → combining acute
+    '\u0060': '\u0300',   // ` GRAVE ACCENT → combining grave
+    '\u00A8': '\u0308',   // ¨ DIAERESIS → combining diaeresis (ddot)
+    '\u02D9': '\u0307',   // ˙ DOT ABOVE → combining dot above (dot)
+    '\u203E': '\u0305',   // ‾ OVERLINE → combining overline (bar)
+    '\u2192': '\u20D7',   // → RIGHT ARROW → combining right arrow above (vec)
+    '\u2190': '\u20D6',   // ← LEFT ARROW → combining left arrow above
 };
 
 function makeMover(el: Element): string {
@@ -256,8 +256,8 @@ function makeMunder(el: Element): string {
     // limLow+groupChr causes overlap (PowerPoint bounding-box bug). Matrix/eqArr wrappers
     // misalign sigma display-mode limits (inner sigma baseline shifts relative to outer sigma).
     // Fix: keep groupChr(pos=bot, e=expr) for the formula+brace (preserves all alignment),
-    // and emit the annotation via a null-byte sentinel. processParagraph detects the sentinel
-    // and injects the annotation as a separate <a:p> paragraph below,
+    // and emit the annotation via a null-byte sentinel. processParagraph in extension.ts
+    // detects the sentinel and injects the annotation as a separate <a:p> paragraph below,
     // making physical overlap structurally impossible without touching formula internals.
     if (base && localName(base) === 'munder') {
         const innerKids = childElements(base);
@@ -354,7 +354,7 @@ function makeMtable(el: Element): string {
             if (cells.length === 3) {
                 const formula = convertChildren(cells[1]);
                 const tag    = convertChildren(cells[2]);
-                return formula + makeRun('  ', 'p') + tag;
+                return formula + makeRun('\u2003\u2003', 'p') + tag;
             }
         }
     }

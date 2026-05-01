@@ -210,7 +210,7 @@ export default class MarpTikzPlugin extends Plugin {
 
     // ── Marp views ────────────────────────────────────────────────────────────
 
-    private _refreshMarpViews(file: TFile): void {
+    private _refreshMarpViews(_file: TFile): void {
         this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE).forEach(leaf => {
             (leaf.view as MarpView).scheduleUpdate();
         });
@@ -366,15 +366,15 @@ export default class MarpTikzPlugin extends Plugin {
         const notice = new Notice(`⏳ Exporting to ${format.toUpperCase()}…`, 0);
         const exporter = new PptxExporter(
             this.parser,
-            (source) => this.renderer.renderTikzToSvg(source),
-            (msg) => console.log('[PptxExport]', msg),
+            (source: string) => this.renderer.renderTikzToSvg(source),
+            (msg: string) => console.log('[PptxExport]', msg),
         );
 
         try {
             const outputPath = await exporter.export(absPath, content, {
                 format,
                 includeNotes: this.settings.marpPptxNotes,
-                onProgress: (msg) => { notice.setMessage(`⏳ ${msg}`); },
+                onProgress: (msg: string) => { notice.setMessage(`⏳ ${msg}`); },
             });
             notice.hide();
             new Notice(`✓ Exported: ${path.basename(outputPath)}`);
