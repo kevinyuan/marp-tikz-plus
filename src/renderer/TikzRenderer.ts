@@ -149,7 +149,13 @@ export class TikzRenderer {
         this._tikzjaxLoadPromise = (async () => {
             this.log('Loading node-tikzjax...');
             // eslint-disable-next-line @typescript-eslint/no-var-requires
-            require('node-tikzjax');
+            const tikzjax = require('node-tikzjax');
+            // Pre-load WASM files into memory (reads core.dump.gz, tex.wasm.gz,
+            // extracts tex_files.tar.gz into memfs). This happens once and is
+            // cached by the module, so subsequent renders skip file I/O.
+            if (typeof tikzjax.load === 'function') {
+                await tikzjax.load();
+            }
             this._tikzjaxLoaded = true;
             this.log('node-tikzjax loaded');
         })();

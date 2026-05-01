@@ -8,7 +8,7 @@ export interface MarpTikzSettings {
 
 export const DEFAULT_SETTINGS: MarpTikzSettings = {
     invertColorsInDarkMode: true,
-    renderTimeout: 15000,
+    renderTimeout: 60000,
     marpPptxNotes: true,
     exportFormat: 'pptx',
     cacheVersion: 1,

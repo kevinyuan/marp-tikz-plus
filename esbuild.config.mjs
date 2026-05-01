@@ -8,10 +8,13 @@ const _require = createRequire(import.meta.url);
 
 const prod = process.argv[2] === "production";
 
-// Patch node-tikzjax bootstrap.js: __dirname in the bundle points to the
-// plugin root (where main.js lives). The original uses '../tex' (relative to
-// its own dist/ folder), but after bundling that resolves incorrectly.
-// We copy tex/ into the plugin root and rewrite the path to 'tex'.
+// Patch node-tikzjax bootstrap.js:
+// 1. Fix __dirname path: bundle's __dirname points to plugin root, but bootstrap
+//    uses '../tex' relative to its own dist/ folder. Rewrite to 'tex'.
+// 2. Cache the compiled WebAssembly module: bootstrap.js calls
+//    WebAssembly.instantiate(bytecode, ...) on every render, which includes a
+//    slow compilation step (~2-5s). Cache the compiled Module so subsequent
+//    renders only do instantiation (fast).
 const fixTikzjaxPaths = {
   name: "fix-tikzjax-paths",
   setup(build) {
@@ -19,10 +22,20 @@ const fixTikzjaxPaths = {
       { filter: /node-tikzjax\/dist\/bootstrap\.js$/ },
       async (args) => {
         let src = await fs.promises.readFile(args.path, "utf8");
-        // Change path.join(__dirname, '../tex') → path.join(__dirname, 'tex')
+        // Fix 1: tex path
         src = src.replace(
           /\(0,\s*path_1\.join\)\s*\(\s*__dirname\s*,\s*'\.\.\/tex'\s*\)/,
           "(0, path_1.join)(__dirname, 'tex')"
+        );
+        // Fix 2: cache compiled WASM module to avoid recompilation on every render.
+        // Replace: const wasm = await WebAssembly.instantiate(bytecode, { ... });
+        // With a version that compiles once and caches the Module.
+        src = src.replace(
+          /const wasm = await WebAssembly\.instantiate\(bytecode,/,
+          `if (!exports.__cachedWasmModule) {
+    exports.__cachedWasmModule = await WebAssembly.compile(bytecode);
+}
+const wasm = await WebAssembly.instantiate(exports.__cachedWasmModule,`
         );
         return { contents: src, loader: "js" };
       }
