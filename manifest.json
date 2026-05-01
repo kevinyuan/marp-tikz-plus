@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-marp-tikz",
+  "name": "Marp TikZ",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "TikZ diagrams and full Marp presentation support (Slide Navigator, Speaker Notes, PPTX export) for Obsidian.",
+  "author": "Kevin Yuan",
+  "authorUrl": "https://github.com/kevinyuan",
+  "isDesktopOnly": true
+}
