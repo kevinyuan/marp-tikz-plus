@@ -197,6 +197,9 @@ export class MarpView extends ItemView {
 .marp-outline-num { opacity: 0.5; font-size: 11px; min-width: 16px; }
 .marp-outline-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* Right column: slides + notes stacked vertically */
+.marp-right-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
 /* Main slide scroll area */
 .marp-scroll-area { flex: 1; overflow-y: auto; padding: 16px; }
 
@@ -299,18 +302,15 @@ export class MarpView extends ItemView {
             toggleBtn.removeClass('hidden');
         });
 
-        // ── Scroll area (main slides) ────────────────────────────────────
-        const scrollArea = body.createDiv({ cls: 'marp-scroll-area' });
+        // ── Right column: slides + notes ─────────────────────────────────
+        const rightCol = body.createDiv({ cls: 'marp-right-col' });
 
-        // Marp HTML — inject style + HTML directly (CSS is scoped to div.marpit)
-        const marpStyle = scrollArea.createEl('style');
-        // no-op: css already injected above in global style tag
-        marpStyle.remove(); // css already in outer style
+        // ── Scroll area (main slides) ─────────────────────────────────────
+        const scrollArea = rightCol.createDiv({ cls: 'marp-scroll-area' });
+        scrollArea.innerHTML = html;  // renders div.marpit with all SVGs
 
-        scrollArea.innerHTML += html;  // renders div.marpit with all SVGs
-
-        // ── Speaker notes panel (bottom) ─────────────────────────────────
-        const notesPanel = this.contentEl.createDiv({ cls: 'marp-notes-panel' + (this._notesVisible ? '' : ' collapsed') });
+        // ── Speaker notes panel (bottom of right column only) ────────────
+        const notesPanel = rightCol.createDiv({ cls: 'marp-notes-panel' + (this._notesVisible ? '' : ' collapsed') });
         notesPanel.style.height = this._notesHeight + 'px';
 
         const resizeHandle = notesPanel.createDiv({ cls: 'marp-notes-resize' });
