@@ -338,7 +338,7 @@ export default class MarpTikzPlugin extends Plugin {
 
         this.addCommand({
             id: 'clear-cache',
-            name: 'Clear TikZ cache',
+            name: 'Clear TikZ cache (this vault)',
             callback: async () => {
                 const stats = await this.cacheManager.getStats();
                 await this.cacheManager.clear();
