@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { DocumentParser } from './src/core/DocumentParser';
 import { CacheManager } from './src/core/CacheManager';
 import { TikzRenderer } from './src/renderer/TikzRenderer';
+import { MarkdownIncludeResolver } from './src/utils/markdownPreprocessor';
 import { MarpTikzSettings, DEFAULT_SETTINGS } from './src/settings/types';
 import { MarpTikzSettingsTab } from './src/settings/SettingsTab';
 import { isMarpFile } from './src/marp/slideParser';
@@ -13,10 +14,12 @@ import { MarpView, MARP_VIEW_TYPE } from './src/marp/MarpView';
 export default class MarpTikzPlugin extends Plugin {
     settings!: MarpTikzSettings;
     renderer!: TikzRenderer;
+    markdownIncludeResolver = new MarkdownIncludeResolver();
 
     private parser!: DocumentParser;
     private cacheManager!: CacheManager;
     private includeWatchers = new Map<string, fs.FSWatcher>();
+    private marpIncludeWatchers = new Map<string, fs.FSWatcher[]>();
     private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
     async onload(): Promise<void> {
@@ -65,8 +68,27 @@ export default class MarpTikzPlugin extends Plugin {
     onunload(): void {
         for (const w of this.includeWatchers.values()) { w.close(); }
         this.includeWatchers.clear();
+        for (const ws of this.marpIncludeWatchers.values()) { ws.forEach(w => w.close()); }
+        this.marpIncludeWatchers.clear();
         for (const t of this.debounceTimers.values()) { clearTimeout(t); }
         this.debounceTimers.clear();
+    }
+
+    updateMarpIncludeWatchers(fileKey: string, trackedPaths: Set<string>, marpFile: TFile): void {
+        const old = this.marpIncludeWatchers.get(fileKey) ?? [];
+        old.forEach(w => w.close());
+
+        const watchers: fs.FSWatcher[] = [];
+        for (const fp of trackedPaths) {
+            try {
+                const watcher = fs.watch(fp, () => {
+                    this.markdownIncludeResolver.invalidate(fp);
+                    this._refreshMarpViews(marpFile);
+                });
+                watchers.push(watcher);
+            } catch { /* ignore */ }
+        }
+        this.marpIncludeWatchers.set(fileKey, watchers);
     }
 
     async loadSettings(): Promise<void> {
@@ -347,7 +369,11 @@ export default class MarpTikzPlugin extends Plugin {
         const { PptxExporter } = await import('./src/marp/PptxExporter');
         const absBase = (this.app.vault.adapter as any).basePath;
         const absPath = path.join(absBase, file.path);
-        const content = await this.app.vault.read(file);
+        const rawContent = await this.app.vault.read(file);
+
+        const baseDir = path.dirname(absPath);
+        this.markdownIncludeResolver.clearTracked();
+        const content = this.markdownIncludeResolver.resolve(rawContent, baseDir);
 
         const notice = new Notice(`⏳ Exporting to ${format.toUpperCase()}…`, 0);
         const exporter = new PptxExporter(

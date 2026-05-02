@@ -1,4 +1,5 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import * as path from 'path';
 import { isMarpFile, parseSpeakerNotes } from './slideParser';
 import { generateHash } from '../utils/hash';
 import type MarpTikzPlugin from '../../main';
@@ -77,7 +78,14 @@ export class MarpView extends ItemView {
 
     private async _render(): Promise<void> {
         if (!this._file) { return; }
-        const content = await this.app.vault.read(this._file);
+        const rawContent = await this.app.vault.read(this._file);
+
+        const absBase = (this.app.vault.adapter as any).basePath as string;
+        const baseDir = path.dirname(path.join(absBase, this._file.path));
+        const resolver = this.plugin.markdownIncludeResolver;
+        resolver.clearTracked();
+        const content = resolver.resolve(rawContent, baseDir);
+        this.plugin.updateMarpIncludeWatchers(this._file.path, resolver.getTrackedPaths(), this._file);
 
         if (!isMarpFile(content)) {
             this.contentEl.empty();
