@@ -31,7 +31,8 @@ export class TikzRenderer {
         onBlockDone?: () => void,
     ): Promise<void> {
         for (const block of blocks) {
-            if (this._svgCache.has(block.hash)) { continue; }
+            const existing = this._svgCache.get(block.hash);
+            if (existing?.svg || existing?.error) { continue; }
 
             const cached = await this.cacheManager.get(block.hash);
             if (cached) {

@@ -22,6 +22,9 @@ export class MarpView extends ItemView {
     private _notesHeight = 150;
     private _currentSlideIdx = 0;
 
+    // Keyboard nav cleanup (re-attached on each render)
+    private _keyNavCleanup: (() => void) | null = null;
+
     constructor(leaf: WorkspaceLeaf, private readonly plugin: MarpTikzPlugin) {
         super(leaf);
     }
@@ -77,6 +80,9 @@ export class MarpView extends ItemView {
     }
 
     private async _render(): Promise<void> {
+        // Remove previous keyboard nav listener before rebuilding DOM
+        if (this._keyNavCleanup) { this._keyNavCleanup(); this._keyNavCleanup = null; }
+
         if (!this._file) { return; }
         const rawContent = await this.app.vault.read(this._file);
 
@@ -103,7 +109,11 @@ export class MarpView extends ItemView {
         const tikzRe = /```tikz\s*\n([\s\S]*?)```/g;
         const uncached: Array<{ hash: string; source: string }> = [];
         const processedContent = content.replace(tikzRe, (_match: string, raw: string) => {
-            const source = raw.trim();
+            // Resolve %!include directives so the hash matches the normal markdown preview path
+            let source = raw.trim();
+            const includeResult = this.plugin.parser.includeResolver.resolve(source, baseDir);
+            if (includeResult?.ok) { source = includeResult.value.content; }
+
             const hash = generateHash(source);
             const entry = this.plugin.renderer.getSvg(hash);
             if (entry?.svg) {
@@ -119,6 +129,7 @@ export class MarpView extends ItemView {
         if (uncached.length > 0) {
             this.plugin.renderer
                 .renderBlocks(uncached, () => this._scheduleUpdate())
+                .then(() => this._scheduleUpdate())
                 .catch(e => console.error('[MarpView] TikZ render error', e));
         }
 
@@ -169,7 +180,7 @@ export class MarpView extends ItemView {
     flex-shrink: 0; overflow-y: auto; overflow-x: hidden;
     background: var(--background-primary);
     border-right: 1px solid var(--background-modifier-border);
-    transition: width 0.15s;
+    transition: width 0.15s; outline: none;
 }
 .marp-sidebar.collapsed { width: 0 !important; border-right: none; }
 
@@ -264,7 +275,27 @@ export class MarpView extends ItemView {
     font-size: 11px; font-weight: bold; opacity: 0.5;
     margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
 }
-.marp-notes-content { white-space: pre-wrap; }
+.marp-notes-content { line-height: 1.6; }
+.marp-notes-content p { margin: 0 0 0.5em; }
+.marp-notes-content p:last-child { margin-bottom: 0; }
+.marp-notes-content h1, .marp-notes-content h2, .marp-notes-content h3 {
+    margin: 0.4em 0 0.2em; font-size: 1em;
+}
+.marp-notes-content code { font-size: 0.85em; }
+.marp-notes-content pre { margin: 0.4em 0; white-space: pre-wrap; }
+.marp-notes-content ul, .marp-notes-content ol { margin: 0.2em 0; padding-left: 1.4em; }
+.marp-notes-content table { border-collapse: collapse; margin: 0.4em 0; }
+.marp-notes-content th, .marp-notes-content td {
+    border: 1px solid var(--background-modifier-border); padding: 2px 6px;
+}
+.marp-notes-content hr {
+    border: none; border-top: 1px solid var(--background-modifier-border);
+    margin: 0.6em 0;
+}
+.marp-notes-content:empty::after {
+    content: "No speaker notes for this slide.";
+    opacity: 0.4; font-style: italic;
+}
         `;
 
         // ── Toggle button (shown when sidebar is collapsed) ────────────────
@@ -286,6 +317,7 @@ export class MarpView extends ItemView {
         const sidebar = body.createDiv({ cls: 'marp-sidebar' });
         sidebar.style.width = SIDEBAR_WIDTHS[this._viewMode] + 'px';
         if (!this._sidebarVisible) { sidebar.addClass('collapsed'); }
+        sidebar.setAttribute('tabindex', '0');
 
         // Toolbar
         const toolbar = sidebar.createDiv({ cls: 'marp-sidebar-toolbar' });
@@ -311,9 +343,9 @@ export class MarpView extends ItemView {
             modeBtns[mode] = btn;
         });
 
-        // Speaker notes toggle
+        // Speaker notes toggle — horizontal-split panel icon
         const notesBtn = toolbar.createEl('button', { cls: 'marp-toolbar-btn' + (this._notesVisible ? ' active' : '') });
-        notesBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v6h6"/></svg>';
+        notesBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>';
         notesBtn.title = 'Speaker notes';
         notesBtn.addEventListener('click', () => {
             this._notesVisible = !this._notesVisible;
@@ -371,15 +403,56 @@ export class MarpView extends ItemView {
 
         const updateNotesContent = () => {
             notesHeader.textContent = `Speaker Notes — Slide ${this._currentSlideIdx + 1}`;
-            notesContent.textContent = notes[this._currentSlideIdx] ?? '';
-            if (!notesContent.textContent) {
-                notesContent.style.cssText = 'opacity:0.4;font-style:italic';
-                notesContent.textContent = 'No speaker notes for this slide.';
+            const rawNote = notes[this._currentSlideIdx] ?? '';
+            if (!rawNote) {
+                notesContent.innerHTML = '';
             } else {
-                notesContent.style.cssText = '';
+                try {
+                    const rendered = _renderMarkdown(rawNote);
+                    notesContent.innerHTML = rendered || `<pre>${_escapeHtml(rawNote)}</pre>`;
+                } catch {
+                    notesContent.innerHTML = `<pre>${_escapeHtml(rawNote)}</pre>`;
+                }
             }
         };
         if (this._notesVisible) { updateNotesContent(); }
+
+        // ── Keyboard navigation ───────────────────────────────────────────
+        const navigateSlide = (delta: number) => {
+            const allSlides = scrollArea.querySelectorAll<SVGElement>('svg[data-marpit-svg]');
+            if (!allSlides.length) { return; }
+            const newIdx = Math.max(0, Math.min(this._currentSlideIdx + delta, allSlides.length - 1));
+            if (newIdx === this._currentSlideIdx) { return; }
+            this._currentSlideIdx = newIdx;
+            const selector = this._viewMode === 'outline' ? '.marp-outline-item' : '.marp-thumb';
+            sidebar.querySelectorAll(selector).forEach((el, j) => el.classList.toggle('active', j === newIdx));
+            const item = sidebar.querySelectorAll<HTMLElement>(selector)[newIdx];
+            item?.scrollIntoView({ block: 'nearest' });
+            allSlides[newIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            updateNotesContent();
+        };
+
+        // Sidebar: arrow up/down navigates when sidebar has focus
+        sidebar.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') { return; }
+            e.preventDefault();
+            navigateSlide(e.key === 'ArrowDown' ? 1 : -1);
+        });
+
+        // View-level: arrow keys work when focus is anywhere inside the view
+        // (but not inside the sidebar itself — that has its own handler above)
+        const keyHandler = (e: KeyboardEvent) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') { return; }
+            if (sidebar.contains(document.activeElement)) { return; }
+            const tag = (document.activeElement as HTMLElement | null)?.tagName;
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') { return; }
+            const allSlides = scrollArea.querySelectorAll('svg[data-marpit-svg]');
+            if (!allSlides.length) { return; }
+            e.preventDefault();
+            navigateSlide(e.key === 'ArrowDown' ? 1 : -1);
+        };
+        this.contentEl.addEventListener('keydown', keyHandler);
+        this._keyNavCleanup = () => this.contentEl.removeEventListener('keydown', keyHandler);
 
         // ── Build sidebar content ──────────────────────────────────────────
         // We need to wait one frame so the Marp SVGs are in the DOM and
@@ -427,13 +500,24 @@ export class MarpView extends ItemView {
                         slideDiv.className = 'marp-thumb-slide';
                         slideDiv.style.transform = `scale(${scale})`;
                         // Copy key visual styles so thumbnail matches slide appearance
-                        const copyProps = ['backgroundColor','backgroundImage','backgroundSize',
-                            'backgroundPosition','backgroundRepeat','color','fontFamily',
-                            'fontSize','lineHeight','padding','display','flexDirection',
-                            'flexWrap','justifyContent','alignItems','textAlign'] as const;
-                        copyProps.forEach(p => { (slideDiv.style as any)[p] = cs[p]; });
-                        slideDiv.innerHTML = origSection.innerHTML;
-                        this._copyStyles(origSection, slideDiv, 5);
+                        const copyProps = [
+                            'backgroundColor', 'backgroundImage', 'backgroundSize',
+                            'backgroundPosition', 'backgroundRepeat', 'color', 'fontFamily',
+                            'fontSize', 'lineHeight', 'padding', 'display', 'flexDirection',
+                            'flexWrap', 'justifyContent', 'alignItems', 'alignContent', 'textAlign',
+                            'gridTemplateColumns', 'gridTemplateRows', 'gridTemplateAreas',
+                            'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow',
+                            'gridColumn', 'gridRow', 'gridArea',
+                            'gap', 'columnGap', 'rowGap',
+                            'columnCount', 'columnWidth',
+                        ] as const;
+                        copyProps.forEach(p => { (slideDiv.style as any)[p] = (cs as any)[p]; });
+
+                        // cloneNode preserves SVG namespaces (innerHTML round-trip can corrupt them)
+                        origSection.childNodes.forEach(child => {
+                            slideDiv.appendChild(child.cloneNode(true));
+                        });
+                        this._copyStyles(origSection, slideDiv, 10);
 
                         const viewport = document.createElement('div');
                         viewport.className = 'marp-thumb-viewport';
@@ -482,13 +566,26 @@ export class MarpView extends ItemView {
             const ce = cloneChildren[i] as HTMLElement;
             if (ce.nodeType !== 1) { continue; }
             const cs = window.getComputedStyle(oe);
-            const props = ['color','backgroundColor','backgroundImage','backgroundSize',
-                'backgroundPosition','display','flexDirection','flexWrap',
-                'justifyContent','alignItems','fontSize','fontFamily',
-                'fontWeight','fontStyle','lineHeight','textAlign',
-                'padding','margin','opacity'] as const;
+            const props = [
+                'color', 'backgroundColor', 'backgroundImage', 'backgroundSize',
+                'backgroundPosition', 'backgroundRepeat',
+                'fontSize', 'fontFamily', 'fontWeight', 'fontStyle',
+                'lineHeight', 'textAlign', 'letterSpacing', 'wordSpacing', 'textDecoration',
+                'margin', 'padding',
+                'display', 'flexDirection', 'flexWrap', 'justifyContent', 'alignItems', 'alignContent',
+                'gridTemplateColumns', 'gridTemplateRows', 'gridTemplateAreas',
+                'gridAutoColumns', 'gridAutoRows', 'gridAutoFlow',
+                'gridColumn', 'gridRow', 'gridArea',
+                'gap', 'columnGap', 'rowGap',
+                'columnCount', 'columnWidth',
+                'width', 'height', 'minWidth', 'minHeight', 'maxWidth', 'maxHeight',
+                'borderTop', 'borderBottom', 'borderLeft', 'borderRight',
+                'borderCollapse', 'borderSpacing',
+                'listStyleType', 'listStylePosition',
+                'opacity', 'verticalAlign', 'whiteSpace', 'overflow',
+            ] as const;
             props.forEach(p => {
-                const v = cs[p as keyof CSSStyleDeclaration] as string;
+                const v = (cs as any)[p] as string;
                 if (v) { (ce.style as any)[p] = v; }
             });
             if (oe.children.length > 0) { this._copyStyles(oe, ce, maxDepth - 1); }
@@ -497,6 +594,7 @@ export class MarpView extends ItemView {
 
     async onClose(): Promise<void> {
         if (this._pendingUpdate) { clearTimeout(this._pendingUpdate); }
+        if (this._keyNavCleanup) { this._keyNavCleanup(); this._keyNavCleanup = null; }
     }
 }
 
@@ -506,4 +604,92 @@ function _escapeHtml(text: string): string {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+}
+
+/** Minimal Markdown → HTML renderer (bold, italic, code, lists, tables, links, headings). */
+function _renderMarkdown(src: string): string {
+    if (!src) { return ''; }
+    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const inline = (s: string) => s
+        .replace(/`([^`]+)`/g, (_, c) => '<code>' + esc(c) + '</code>')
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/__(.+?)__/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/_(.+?)_/g, '<em>$1</em>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+    const lines = src.split('\n');
+    const out: string[] = [];
+    let i = 0;
+    const flushPara = (buf: string[]) => {
+        if (buf.length) { out.push('<p>' + inline(esc(buf.join(' '))) + '</p>'); }
+        return [] as string[];
+    };
+    let para: string[] = [];
+
+    while (i < lines.length) {
+        const line = lines[i];
+        if (/^```/.test(line)) {
+            para = flushPara(para);
+            const lang = line.slice(3).trim();
+            const codeLines: string[] = [];
+            i++;
+            while (i < lines.length && !/^```/.test(lines[i])) { codeLines.push(esc(lines[i])); i++; }
+            out.push('<pre><code' + (lang ? ' class="language-' + esc(lang) + '"' : '') + '>' + codeLines.join('\n') + '</code></pre>');
+            i++; continue;
+        }
+        const hm = line.match(/^(#{1,3})\s+(.*)/);
+        if (hm) {
+            para = flushPara(para);
+            const level = hm[1].length;
+            out.push('<h' + level + '>' + inline(esc(hm[2])) + '</h' + level + '>');
+            i++; continue;
+        }
+        if (/^(?:---+|___+|\*\*\*+)\s*$/.test(line)) {
+            para = flushPara(para);
+            out.push('<hr>');
+            i++; continue;
+        }
+        if (/^[-*+]\s/.test(line)) {
+            para = flushPara(para);
+            const ulItems: string[] = [];
+            while (i < lines.length && /^[-*+]\s/.test(lines[i])) {
+                ulItems.push('<li>' + inline(esc(lines[i].replace(/^[-*+]\s/, ''))) + '</li>');
+                i++;
+            }
+            out.push('<ul>' + ulItems.join('') + '</ul>');
+            continue;
+        }
+        if (/^\d+\.\s/.test(line)) {
+            para = flushPara(para);
+            const olItems: string[] = [];
+            while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+                olItems.push('<li>' + inline(esc(lines[i].replace(/^\d+\.\s/, ''))) + '</li>');
+                i++;
+            }
+            out.push('<ol>' + olItems.join('') + '</ol>');
+            continue;
+        }
+        if (/^\|/.test(line)) {
+            para = flushPara(para);
+            const tRows: string[] = [];
+            while (i < lines.length && /^\|/.test(lines[i])) { tRows.push(lines[i]); i++; }
+            const parseRow = (r: string, tag: string) =>
+                '<tr>' + r.replace(/^\||\|$/g, '').split('|').map(c =>
+                    '<' + tag + '>' + inline(esc(c.trim())) + '</' + tag + '>'
+                ).join('') + '</tr>';
+            let tableHtml = '<table><thead>' + parseRow(tRows[0], 'th') + '</thead>';
+            const bodyRows = tRows.slice(2);
+            if (bodyRows.length) {
+                tableHtml += '<tbody>' + bodyRows.map(r => parseRow(r, 'td')).join('') + '</tbody>';
+            }
+            out.push(tableHtml + '</table>');
+            continue;
+        }
+        if (/^\s*$/.test(line)) { para = flushPara(para); i++; continue; }
+        para.push(line);
+        i++;
+    }
+    flushPara(para);
+    return out.join('\n');
 }

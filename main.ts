@@ -16,7 +16,7 @@ export default class MarpTikzPlugin extends Plugin {
     renderer!: TikzRenderer;
     markdownIncludeResolver = new MarkdownIncludeResolver();
 
-    private parser!: DocumentParser;
+    parser!: DocumentParser;
     private cacheManager!: CacheManager;
     private includeWatchers = new Map<string, fs.FSWatcher>();
     private marpIncludeWatchers = new Map<string, fs.FSWatcher[]>();
@@ -242,7 +242,9 @@ export default class MarpTikzPlugin extends Plugin {
 
     private _refreshMarpViews(_file: TFile): void {
         this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE).forEach(leaf => {
-            (leaf.view as MarpView).scheduleUpdate();
+            if (leaf.view instanceof MarpView) {
+                leaf.view.scheduleUpdate();
+            }
         });
     }
 
@@ -255,7 +257,9 @@ export default class MarpTikzPlugin extends Plugin {
             leaf = this.app.workspace.getLeaf('split');
         }
         await leaf.setViewState({ type: MARP_VIEW_TYPE, active: true });
-        (leaf.view as MarpView).setFile(file);
+        if (leaf.view instanceof MarpView) {
+            leaf.view.setFile(file);
+        }
         this.app.workspace.revealLeaf(leaf);
     }
 
@@ -437,7 +441,9 @@ export default class MarpTikzPlugin extends Plugin {
             if (!(file instanceof TFile) || file.extension !== 'md') { return; }
 
             this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE).forEach(l => {
-                (l.view as MarpView).setFile(file);
+                if (l.view instanceof MarpView) {
+                    l.view.setFile(file);
+                }
             });
         }));
     }

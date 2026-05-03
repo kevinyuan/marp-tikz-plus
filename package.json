@@ -6,9 +6,18 @@
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc --noEmit -skipLibCheck && node esbuild.config.mjs production",
-    "lint": "eslint src --ext .ts"
+    "lint": "eslint src --ext .ts",
+    "test": "jest",
+    "test:coverage": "jest --coverage"
   },
-  "keywords": ["obsidian", "tikz", "marp", "latex", "diagram", "presentation"],
+  "keywords": [
+    "obsidian",
+    "tikz",
+    "marp",
+    "latex",
+    "diagram",
+    "presentation"
+  ],
   "author": "Kevin Yuan",
   "license": "MIT",
   "dependencies": {
@@ -21,12 +30,15 @@
     "tslib": "^2.6.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.21.0",
+    "jest": "^30.3.0",
     "obsidian": "latest",
+    "ts-jest": "^29.4.9",
     "typescript": "^5.3.0"
   }
 }
