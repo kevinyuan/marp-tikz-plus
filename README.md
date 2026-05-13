@@ -4,7 +4,7 @@ Render TikZ/LaTeX diagrams directly in Obsidian notes, and author full Marp slid
 
 > Desktop only. Rendering runs locally via a WASM-based TeX engine — no internet required.
 
-Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--tikz-black?logo=github)](https://github.com/kevinyuan/vscode-tikz) [![Downloads](https://vsmarketplacebadges.dev/downloads-short/kevinyuan.vscode-tikzjax.svg)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
+Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--tikz-black?logo=github)](https://github.com/kevinyuan/vscode-tikz) [![VS Marketplace](https://vsmarketplacebadges.dev/downloads-short/kevinyuan.vscode-tikzjax.svg?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
 
 ---
 
