@@ -1,7 +1,7 @@
 {
   "id": "marp-tikz-plus",
   "name": "Marp TikZ Plus",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "minAppVersion": "1.4.0",
   "description": "TikZ diagrams and full Marp presentation support — Slide Navigator, Speaker Notes, and PPTX export.",
   "author": "Kevin Yuan",

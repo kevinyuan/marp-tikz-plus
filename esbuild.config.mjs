@@ -1,6 +1,6 @@
 import esbuild from "esbuild";
 import process from "process";
-import builtins from "builtin-modules";
+import { builtinModules } from "module";
 import fs from "fs";
 import { createRequire } from "module";
 
@@ -109,7 +109,8 @@ const context = await esbuild.context({
     "@lezer/common",
     "@lezer/highlight",
     "@lezer/lr",
-    ...builtins,
+    ...builtinModules,
+    ...builtinModules.map(m => `node:${m}`),
   ],
   plugins: [fixTikzjaxPaths, fixPunycode],
   platform: "node",
