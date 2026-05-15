@@ -1,6 +1,6 @@
 {
   "name": "obsidian-marp-tikz-v1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "TikZ diagrams and Marp presentation support for Obsidian",
   "main": "main.js",
   "scripts": {
