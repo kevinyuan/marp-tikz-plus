@@ -1,6 +1,6 @@
 {
   "id": "marp-tikz-plus",
-  "name": "Marp TikZ Plus",
+  "name": "Marp Plus for Obsidian",
   "version": "1.0.5",
   "minAppVersion": "1.4.0",
   "description": "Author Marp slide decks in your vault with the precision scientific and engineering talks demand: TikZ/LaTeX diagrams, slide navigator, speaker notes, and PPTX/PDF export.",

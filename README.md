@@ -1,10 +1,10 @@
-# Marp TikZ Plus
+# Marp Plus for Obsidian
 
 **Build presentations the way you build notes.** Author [Marp](https://marp.app/) slide decks inside your vault with an AI-friendly workflow, a professional authoring experience, and the precision that scientific and engineering presentations demand: TikZ/LaTeX diagrams, a **Slide Navigator**, a **Speaker Notes panel**, and one-click **PPTX/PDF export** with native math objects.
 
 > Desktop only. Rendering runs locally via a WASM-based TeX engine — no internet required.
 
-_Marp TikZ Plus is an independent third-party plugin. It is not affiliated with, endorsed by, or sponsored by the Marp team._
+_Marp Plus for Obsidian is an independent third-party plugin. It is not affiliated with, endorsed by, or sponsored by the Marp team._
 
 Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--marp--plus-black?logo=github)](https://github.com/kevinyuan/vscode-marp-plus) [![VS Marketplace](https://vsmarketplacebadges.dev/installs-short/kevinyuan.vscode-tikzjax.svg?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
 
@@ -255,7 +255,7 @@ LaTeX math in slides is converted to **native PowerPoint math objects** (OMML), 
 
 ## Commands
 
-Open the command palette (`Cmd+P` / `Ctrl+P`) and search for **Marp TikZ**:
+Open the command palette (`Cmd+P` / `Ctrl+P`) and search for **Marp Plus**:
 
 | Command | Description |
 |---------|-------------|
@@ -272,7 +272,7 @@ Open the command palette (`Cmd+P` / `Ctrl+P`) and search for **Marp TikZ**:
 
 ## Settings
 
-Open **Settings → Community Plugins → Marp TikZ**:
+Open **Settings → Community Plugins → Marp Plus for Obsidian**:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
