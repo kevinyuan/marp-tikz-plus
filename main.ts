@@ -417,15 +417,19 @@ export default class MarpTikzPlugin extends Plugin {
                 this.debounceTimers.delete(key);
                 const content = await this.app.vault.read(file);
                 const blocks = this.parser.parse(content, absPath);
-                if (blocks.length === 0) { return; }
-                await this.renderer.renderBlocks(blocks, () => {
-                    this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
-                        const view = leaf.view as any;
-                        if (view.file?.path === file.path) {
-                            view.previewMode?.rerender?.(true);
-                        }
+                // A deck with no tikz block still has to refresh: its text,
+                // includes, images and speaker notes may all have changed.
+                // Gating the whole handler on blocks.length left such decks stale.
+                if (blocks.length > 0) {
+                    await this.renderer.renderBlocks(blocks, () => {
+                        this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
+                            const view = leaf.view as any;
+                            if (view.file?.path === file.path) {
+                                view.previewMode?.rerender?.(true);
+                            }
+                        });
                     });
-                });
+                }
                 this._updateIncludeWatchers(file.path, absPath);
                 this._refreshMarpViews(file);
             }, 1000);

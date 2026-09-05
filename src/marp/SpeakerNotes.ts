@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, TFile } from 'obsidian';
 import { parseSpeakerNotes } from './slideParser';
+import { renderNotesMarkdown } from '../utils/notesMarkdown';
 
 export const SPEAKER_NOTES_VIEW_TYPE = 'marp-tikz-speaker-notes';
 
@@ -64,9 +65,11 @@ export class SpeakerNotesView extends ItemView {
         nextBtn.addEventListener('click', () => { this.setCurrentSlide(this._currentSlide + 1); });
 
         const note = this._notes[this._currentSlide] || '';
-        const notesBody = this.contentEl.createDiv({ cls: 'notes-body' });
+        const notesBody = this.contentEl.createDiv({ cls: 'notes-body marp-notes-content' });
         if (note) {
-            notesBody.createEl('p', { text: note });
+            // Same renderer as the in-preview notes panel, so both agree on
+            // headings, lists, tables and emphasis. Content is escaped there.
+            notesBody.innerHTML = renderNotesMarkdown(note);
         } else {
             notesBody.createEl('p', { text: '(no notes for this slide)', cls: 'marp-tikz-placeholder' });
         }

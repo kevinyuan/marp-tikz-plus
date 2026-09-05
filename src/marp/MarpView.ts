@@ -2,6 +2,8 @@ import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import * as path from 'path';
 import { isMarpFile, parseSpeakerNotes } from './slideParser';
 import { generateHash } from '../utils/hash';
+import { renderNotesMarkdown, escapeHtml as _escapeHtml } from '../utils/notesMarkdown';
+import { resolveLocalResources } from '../utils/resolveResources';
 import type MarpTikzPlugin from '../../main';
 
 export const MARP_VIEW_TYPE = 'marp-tikz-preview';
@@ -69,6 +71,30 @@ export class MarpView extends ItemView {
         this._notesVisible = !this._notesVisible;
         notesPanel.classList.toggle('collapsed', !this._notesVisible);
         notesBtn?.classList.toggle('active', this._notesVisible);
+    }
+
+    /**
+     * Point local image references at vault resource URLs.
+     *
+     * Marp HTML is injected into the Obsidian document, so a relative path would
+     * resolve against Obsidian's own app URL and the image would not load. The
+     * resource URL also carries the file's modification time, so a regenerated
+     * image is re-fetched rather than served from cache.
+     */
+    private _resolveImages(html: string, baseDir: string): string {
+        const adapter = this.app.vault.adapter as any;
+        const absBase = adapter.basePath as string;
+        return resolveLocalResources(html, (rel) => {
+            try {
+                const abs = path.isAbsolute(rel) ? rel : path.resolve(baseDir, rel);
+                const vaultPath = path.relative(absBase, abs);
+                // Outside the vault: Obsidian cannot serve it, so leave it alone.
+                if (!vaultPath || vaultPath.startsWith('..')) { return null; }
+                return adapter.getResourcePath(vaultPath.split(path.sep).join('/'));
+            } catch {
+                return null;
+            }
+        });
     }
 
     private _scheduleUpdate(): void {
@@ -141,6 +167,7 @@ export class MarpView extends ItemView {
             return;
         }
         html = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+        html = this._resolveImages(html, baseDir);
 
         const notes = parseSpeakerNotes(content);
 
@@ -278,9 +305,16 @@ export class MarpView extends ItemView {
 .marp-notes-content { line-height: 1.6; }
 .marp-notes-content p { margin: 0 0 0.5em; }
 .marp-notes-content p:last-child { margin-bottom: 0; }
-.marp-notes-content h1, .marp-notes-content h2, .marp-notes-content h3 {
-    margin: 0.4em 0 0.2em; font-size: 1em;
+.marp-notes-content h1, .marp-notes-content h2, .marp-notes-content h3,
+.marp-notes-content h4, .marp-notes-content h5, .marp-notes-content h6 {
+    margin: 0.4em 0 0.2em; font-size: 1em; font-weight: 600;
 }
+.marp-notes-content h1 { font-size: 1.15em; }
+.marp-notes-content h2 { font-size: 1.07em; }
+.marp-notes-content h4, .marp-notes-content h5, .marp-notes-content h6 {
+    font-size: 0.95em; opacity: 0.85;
+}
+.marp-notes-content > :first-child { margin-top: 0; }
 .marp-notes-content code { font-size: 0.85em; }
 .marp-notes-content pre { margin: 0.4em 0; white-space: pre-wrap; }
 .marp-notes-content ul, .marp-notes-content ol { margin: 0.2em 0; padding-left: 1.4em; }
@@ -408,7 +442,7 @@ export class MarpView extends ItemView {
                 notesContent.innerHTML = '';
             } else {
                 try {
-                    const rendered = _renderMarkdown(rawNote);
+                    const rendered = renderNotesMarkdown(rawNote);
                     notesContent.innerHTML = rendered || `<pre>${_escapeHtml(rawNote)}</pre>`;
                 } catch {
                     notesContent.innerHTML = `<pre>${_escapeHtml(rawNote)}</pre>`;
@@ -596,100 +630,4 @@ export class MarpView extends ItemView {
         if (this._pendingUpdate) { clearTimeout(this._pendingUpdate); }
         if (this._keyNavCleanup) { this._keyNavCleanup(); this._keyNavCleanup = null; }
     }
-}
-
-function _escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-/** Minimal Markdown → HTML renderer (bold, italic, code, lists, tables, links, headings). */
-function _renderMarkdown(src: string): string {
-    if (!src) { return ''; }
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const inline = (s: string) => s
-        .replace(/`([^`]+)`/g, (_, c) => '<code>' + esc(c) + '</code>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/__(.+?)__/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/_(.+?)_/g, '<em>$1</em>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-
-    const lines = src.split('\n');
-    const out: string[] = [];
-    let i = 0;
-    const flushPara = (buf: string[]) => {
-        if (buf.length) { out.push('<p>' + inline(esc(buf.join(' '))) + '</p>'); }
-        return [] as string[];
-    };
-    let para: string[] = [];
-
-    while (i < lines.length) {
-        const line = lines[i];
-        if (/^```/.test(line)) {
-            para = flushPara(para);
-            const lang = line.slice(3).trim();
-            const codeLines: string[] = [];
-            i++;
-            while (i < lines.length && !/^```/.test(lines[i])) { codeLines.push(esc(lines[i])); i++; }
-            out.push('<pre><code' + (lang ? ' class="language-' + esc(lang) + '"' : '') + '>' + codeLines.join('\n') + '</code></pre>');
-            i++; continue;
-        }
-        const hm = line.match(/^(#{1,3})\s+(.*)/);
-        if (hm) {
-            para = flushPara(para);
-            const level = hm[1].length;
-            out.push('<h' + level + '>' + inline(esc(hm[2])) + '</h' + level + '>');
-            i++; continue;
-        }
-        if (/^(?:---+|___+|\*\*\*+)\s*$/.test(line)) {
-            para = flushPara(para);
-            out.push('<hr>');
-            i++; continue;
-        }
-        if (/^[-*+]\s/.test(line)) {
-            para = flushPara(para);
-            const ulItems: string[] = [];
-            while (i < lines.length && /^[-*+]\s/.test(lines[i])) {
-                ulItems.push('<li>' + inline(esc(lines[i].replace(/^[-*+]\s/, ''))) + '</li>');
-                i++;
-            }
-            out.push('<ul>' + ulItems.join('') + '</ul>');
-            continue;
-        }
-        if (/^\d+\.\s/.test(line)) {
-            para = flushPara(para);
-            const olItems: string[] = [];
-            while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
-                olItems.push('<li>' + inline(esc(lines[i].replace(/^\d+\.\s/, ''))) + '</li>');
-                i++;
-            }
-            out.push('<ol>' + olItems.join('') + '</ol>');
-            continue;
-        }
-        if (/^\|/.test(line)) {
-            para = flushPara(para);
-            const tRows: string[] = [];
-            while (i < lines.length && /^\|/.test(lines[i])) { tRows.push(lines[i]); i++; }
-            const parseRow = (r: string, tag: string) =>
-                '<tr>' + r.replace(/^\||\|$/g, '').split('|').map(c =>
-                    '<' + tag + '>' + inline(esc(c.trim())) + '</' + tag + '>'
-                ).join('') + '</tr>';
-            let tableHtml = '<table><thead>' + parseRow(tRows[0], 'th') + '</thead>';
-            const bodyRows = tRows.slice(2);
-            if (bodyRows.length) {
-                tableHtml += '<tbody>' + bodyRows.map(r => parseRow(r, 'td')).join('') + '</tbody>';
-            }
-            out.push(tableHtml + '</table>');
-            continue;
-        }
-        if (/^\s*$/.test(line)) { para = flushPara(para); i++; continue; }
-        para.push(line);
-        i++;
-    }
-    flushPara(para);
-    return out.join('\n');
 }

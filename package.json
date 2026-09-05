@@ -1,7 +1,7 @@
 {
   "name": "obsidian-marp-tikz-plus",
   "version": "1.0.5",
-  "description": "TikZ diagrams and Marp presentation support for Obsidian",
+  "description": "Author Marp slide decks in your vault with the precision scientific and engineering talks demand: TikZ/LaTeX diagrams, slide navigator, speaker notes, and PPTX/PDF export.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

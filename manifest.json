@@ -3,7 +3,7 @@
   "name": "Marp TikZ Plus",
   "version": "1.0.5",
   "minAppVersion": "1.4.0",
-  "description": "TikZ diagrams and full Marp presentation support — Slide Navigator, Speaker Notes, and PPTX export.",
+  "description": "Author Marp slide decks in your vault with the precision scientific and engineering talks demand: TikZ/LaTeX diagrams, slide navigator, speaker notes, and PPTX/PDF export.",
   "author": "Kevin Yuan",
   "authorUrl": "https://github.com/kevinyuan",
   "isDesktopOnly": true

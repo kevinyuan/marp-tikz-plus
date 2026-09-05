@@ -1,10 +1,10 @@
-# Marp TikZ
+# Marp TikZ Plus
 
-Render TikZ/LaTeX diagrams directly in Obsidian notes, and author full Marp slide presentations — complete with **Slide Navigator**, **Speaker Notes panel**, and one-click **PPTX export** with native math objects.
+**Build presentations the way you build notes.** Author [Marp](https://marp.app/) slide decks inside your vault with an AI-friendly workflow, a professional authoring experience, and the precision that scientific and engineering presentations demand: TikZ/LaTeX diagrams, a **Slide Navigator**, a **Speaker Notes panel**, and one-click **PPTX/PDF export** with native math objects.
 
 > Desktop only. Rendering runs locally via a WASM-based TeX engine — no internet required.
 
-Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--tikz-black?logo=github)](https://github.com/kevinyuan/vscode-tikz) [![VS Marketplace](https://vsmarketplacebadges.dev/installs-short/kevinyuan.vscode-tikzjax.svg?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
+Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--marp--plus-black?logo=github)](https://github.com/kevinyuan/vscode-marp-plus) [![VS Marketplace](https://vsmarketplacebadges.dev/installs-short/kevinyuan.vscode-tikzjax.svg?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
 
 ---
 
