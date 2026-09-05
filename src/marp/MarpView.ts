@@ -3,7 +3,7 @@ import * as path from 'path';
 import { isMarpFile, parseSpeakerNotes } from './slideParser';
 import { generateHash } from '../utils/hash';
 import { renderNotesMarkdown, escapeHtml as _escapeHtml } from '../utils/notesMarkdown';
-import { resolveLocalResources } from '../utils/resolveResources';
+import { resolveLocalResources, toVaultRelative } from '../utils/resolveResources';
 import type MarpTikzPlugin from '../../main';
 
 export const MARP_VIEW_TYPE = 'marp-tikz-preview';
@@ -85,12 +85,11 @@ export class MarpView extends ItemView {
         const adapter = this.app.vault.adapter as any;
         const absBase = adapter.basePath as string;
         return resolveLocalResources(html, (rel) => {
+            // Outside the vault Obsidian cannot serve the file, so leave it alone.
+            const vaultPath = toVaultRelative(absBase, baseDir, rel);
+            if (vaultPath === null) { return null; }
             try {
-                const abs = path.isAbsolute(rel) ? rel : path.resolve(baseDir, rel);
-                const vaultPath = path.relative(absBase, abs);
-                // Outside the vault: Obsidian cannot serve it, so leave it alone.
-                if (!vaultPath || vaultPath.startsWith('..')) { return null; }
-                return adapter.getResourcePath(vaultPath.split(path.sep).join('/'));
+                return adapter.getResourcePath(vaultPath);
             } catch {
                 return null;
             }

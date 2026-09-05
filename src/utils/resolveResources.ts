@@ -16,6 +16,8 @@
  *     `![bg](...)` background directives
  */
 
+import * as path from 'path';
+
 /** Resolve one document-relative path to a URL, or null when it cannot be resolved. */
 export type ResourceResolver = (relativePath: string) => string | null;
 
@@ -74,4 +76,25 @@ export function collectLocalResources(html: string): string[] {
     const found: string[] = [];
     resolveLocalResources(html, (p) => { found.push(p); return null; });
     return found;
+}
+
+/**
+ * Map an image reference to a vault-relative path, the form Obsidian's
+ * `getResourcePath()` expects.
+ *
+ * @param absBase  Absolute path of the vault root
+ * @param baseDir  Absolute directory of the document holding the reference
+ * @param ref      The reference as written (relative or absolute)
+ * @returns Vault-relative path with forward slashes, or null when the target
+ *          lies outside the vault, where Obsidian cannot serve it.
+ */
+export function toVaultRelative(absBase: string, baseDir: string, ref: string): string | null {
+    try {
+        const abs = path.isAbsolute(ref) ? ref : path.resolve(baseDir, ref);
+        const rel = path.relative(absBase, abs);
+        if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) { return null; }
+        return rel.split(path.sep).join('/');
+    } catch {
+        return null;
+    }
 }

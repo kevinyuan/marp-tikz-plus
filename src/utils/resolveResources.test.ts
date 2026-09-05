@@ -1,4 +1,4 @@
-import { resolveLocalResources, collectLocalResources } from './resolveResources';
+import { resolveLocalResources, collectLocalResources, toVaultRelative } from './resolveResources';
 
 /** Fake Obsidian resolver: known files get an app:// URL with an mtime query. */
 const known: Record<string, number> = {
@@ -75,5 +75,29 @@ describe('collectLocalResources', () => {
         const html = '<img src="diagrams/cover.svg"><div style="background:url(img/photo.png)">'
             + '<img src="https://x/y.png">';
         expect(collectLocalResources(html)).toEqual(['diagrams/cover.svg', 'img/photo.png']);
+    });
+});
+
+describe('toVaultRelative', () => {
+    const vault = '/home/u/vault';
+    const docDir = '/home/u/vault/decks';
+
+    it('maps a document-relative reference into the vault', () => {
+        expect(toVaultRelative(vault, docDir, 'diagrams/a.svg')).toBe('decks/diagrams/a.svg');
+        expect(toVaultRelative(vault, docDir, './a.png')).toBe('decks/a.png');
+        expect(toVaultRelative(vault, docDir, '../shared/a.png')).toBe('shared/a.png');
+    });
+
+    it('accepts an absolute path inside the vault', () => {
+        expect(toVaultRelative(vault, docDir, '/home/u/vault/img/a.png')).toBe('img/a.png');
+    });
+
+    it('rejects targets outside the vault', () => {
+        expect(toVaultRelative(vault, docDir, '../../outside.png')).toBeNull();
+        expect(toVaultRelative(vault, docDir, '/etc/passwd.png')).toBeNull();
+    });
+
+    it('rejects a reference that resolves to the vault root itself', () => {
+        expect(toVaultRelative(vault, docDir, '..')).toBeNull();
     });
 });
