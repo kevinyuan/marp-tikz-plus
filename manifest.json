@@ -1,7 +1,7 @@
 {
   "id": "marp-tikz-plus",
   "name": "Marp Plus",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "minAppVersion": "1.7.2",
   "description": "Author Marp slide decks in your vault with the precision scientific and engineering talks demand: TikZ/LaTeX diagrams, slide navigator, speaker notes, and PPTX/PDF export.",
   "author": "Kevin Yuan",
