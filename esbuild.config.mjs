@@ -130,6 +130,47 @@ const fixPunycode = {
   },
 };
 
+// jszip's lib/external.js only requires "lie" (a Promise polyfill) when the global
+// object has no native Promise: `typeof Promise !== "undefined" ? Promise : require("lie")`.
+// Obsidian's Electron renderer always has native Promise, so that branch never runs —
+// but esbuild can't prove that statically and bundles "lie" anyway, pulling in its
+// "immediate" dependency. immediate's setImmediate polyfill creates <script> elements
+// (the onreadystatechange trick for old IE) purely to schedule callbacks; it's never
+// reached here, but static scanners flag the pattern as dynamic script injection.
+// Stub the module out since the require is dead code in this runtime.
+const stubLie = {
+  name: "stub-lie",
+  setup(build) {
+    build.onResolve({ filter: /^lie$/ }, (args) => ({
+      path: args.path,
+      namespace: "stub-lie",
+    }));
+    build.onLoad({ filter: /.*/, namespace: "stub-lie" }, () => ({
+      contents: "module.exports = undefined;",
+      loader: "js",
+    }));
+  },
+};
+
+// jszip's lib/utils.js unconditionally does `require("setimmediate")`, a global-patching
+// polyfill that installs `global.setImmediate` using the same <script> onreadystatechange
+// trick as "immediate" above (plus a `new Function(...)` fallback for string callbacks) —
+// but only `if (!global.setImmediate)`. Obsidian's Electron renderer always has Node's
+// native setImmediate, so the polyfill body never runs. Stub it out for the same reason.
+const stubSetImmediate = {
+  name: "stub-setimmediate",
+  setup(build) {
+    build.onResolve({ filter: /^setimmediate$/ }, (args) => ({
+      path: args.path,
+      namespace: "stub-setimmediate",
+    }));
+    build.onLoad({ filter: /.*/, namespace: "stub-setimmediate" }, () => ({
+      contents: "",
+      loader: "js",
+    }));
+  },
+};
+
 const context = await esbuild.context({
   entryPoints: ["main.ts"],
   bundle: true,
@@ -155,7 +196,7 @@ const context = await esbuild.context({
     ...builtinModules,
     ...builtinModules.map(m => `node:${m}`),
   ],
-  plugins: [fixTikzjaxPaths, fixTikzjaxDvi2svg, fixPunycode],
+  plugins: [fixTikzjaxPaths, fixTikzjaxDvi2svg, fixPunycode, stubLie, stubSetImmediate],
   platform: "node",
   format: "cjs",
   target: "es2018",
