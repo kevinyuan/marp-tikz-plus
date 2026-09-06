@@ -7,11 +7,7 @@
  */
 
 import { DOMParser } from '@xmldom/xmldom';
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const temml = require('temml') as {
-    renderToString(latex: string, options?: Record<string, unknown>): string;
-};
+import temml from 'temml';
 
 // N-ary operators: limits rendered above/below (undOvr)
 const NARY_UNDOVR = new Set(['∑', '∏', '⋂', '⋃', '⊕', '⊗', '⊙', '⊎']);
@@ -27,7 +23,6 @@ export function latexToOmml(latex: string, isDisplay: boolean): string {
     let mathmlStr: string;
     try {
         mathmlStr = temml.renderToString(latex, {
-            output: 'mathml',
             displayMode: isDisplay,
             throwOnError: false,
         });
@@ -41,7 +36,7 @@ export function latexToOmml(latex: string, isDisplay: boolean): string {
         const mathEl = doc.documentElement;
         const inner = convertChildren(mathEl);
         return `<m:oMath>${inner}</m:oMath>`;
-    } catch (e: unknown) {
+    } catch {
         return `<m:oMath><m:r><m:t>[Conversion error]</m:t></m:r></m:oMath>`;
     }
 }
@@ -127,7 +122,7 @@ function convertMrow(el: Element): string {
         // detect that and treat it as if the nary were a direct child.
         const naryEl: Element | null =
             (tag === 'msubsup' || tag === 'munderover') && isNaryElement(child) ? child
-            : tag === 'mrow' && isNarySingletonMrow(child) ? childElements(child)[0]!
+            : tag === 'mrow' && isNarySingletonMrow(child) ? childElements(child)[0]
             : null;
         if (naryEl) {
             // Collect all consecutive nary siblings (e.g. ∑∑ F) into a chain so
@@ -137,7 +132,7 @@ function convertMrow(el: Element): string {
                 const cn = childElements(el);
                 const t  = localName(el);
                 return {
-                    chr: textContent(cn[0]!),
+                    chr: textContent(cn[0]),
                     sub: (t === 'munderover' || t === 'msubsup') ? (cn[1] ?? null) : null,
                     sup: (t === 'munderover' || t === 'msubsup') ? (cn[2] ?? null) : null,
                 };
@@ -149,7 +144,7 @@ function convertMrow(el: Element): string {
                 const nTag = localName(nk);
                 const next: Element | null =
                     (nTag === 'msubsup' || nTag === 'munderover') && isNaryElement(nk) ? nk
-                    : nTag === 'mrow' && isNarySingletonMrow(nk) ? childElements(nk)[0]!
+                    : nTag === 'mrow' && isNarySingletonMrow(nk) ? childElements(nk)[0]
                     : null;
                 if (!next) { break; }
                 chain.push(toItem(next));
@@ -266,7 +261,7 @@ function makeMunder(el: Element): string {
             if (innerMo && localName(innerMo) === 'mo') {
                 const chr = textContent(innerMo);
                 if (chr === '⏟' || chr === '⌣') {
-                    const exprStr = convertNode(innerKids[0]!);
+                    const exprStr = convertNode(innerKids[0]);
                     const annotStr = under ? convertNode(under) : '';
                     // \x00 sentinels are stripped by processParagraph; annotation becomes
                     // a separate centered <a:p> paragraph inserted immediately after this one.

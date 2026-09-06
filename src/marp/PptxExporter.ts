@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFile, execFileSync } from 'child_process';
+import JSZip from 'jszip';
 import { extractAndReplaceMath, ExtractedMath } from '../utils/mathPreprocessor';
 import { latexToOmml } from '../utils/mathToOmml';
 import { injectMarpCjkFont } from '../utils/marpCjkFont';
@@ -408,8 +409,6 @@ function runMarpCli(
  * PowerPoint's repair prompt.
  */
 async function fixPptxOverlays(pptxPath: string): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const JSZip = require('jszip');
     const zip = await JSZip.loadAsync(fs.readFileSync(pptxPath));
     let modified = false;
 
@@ -473,8 +472,6 @@ const OMML_A14_NS = 'http://schemas.microsoft.com/office/drawing/2010/main';
  * math object (<m:oMath>...</m:oMath> directly inside <a:p>).
  */
 async function injectMathIntoSlides(pptxPath: string, formulas: ExtractedMath[]): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const JSZip = require('jszip');
     const zip = await JSZip.loadAsync(fs.readFileSync(pptxPath));
     const formulaMap = new Map<string, ExtractedMath>(formulas.map(f => [f.placeholder, f]));
     const slidePattern = /^ppt\/slides\/slide\d+\.xml$/;
@@ -940,6 +937,8 @@ function processParagraph(paraXml: string, paraContent: string, formulaMap: Map<
     // re-emitted as a separate centered <a:p> paragraph so annotations never overlap the brace.
     if (primaryPara.includes('\x00ANNOT_START\x00')) {
         const annotParas: string[] = [];
+        // eslint-disable-next-line no-control-regex -- \x00 sentinels are intentional: NUL can't
+        // occur in real OMML/XML content, so they're a safe, collision-free delimiter here.
         primaryPara = primaryPara.replace(/\x00ANNOT_START\x00([\s\S]*?)\x00ANNOT_END\x00/g,
             (_m, annotOmml: string) => {
                 // spcBef: 20pt spacing above to clear the brace character below the formula.
@@ -1160,8 +1159,6 @@ function buildNotesMasterRelsXml(): string {
 async function injectSpeakerNotes(pptxPath: string, notes: string[]): Promise<void> {
     if (notes.every(n => !n)) { return; }
 
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const JSZip = require('jszip');
     const zip = await JSZip.loadAsync(fs.readFileSync(pptxPath));
 
     // Determine ordered slide filenames from presentation.xml + its rels

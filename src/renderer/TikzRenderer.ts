@@ -2,6 +2,8 @@ import { CacheManager } from '../core/CacheManager';
 import { CacheEntry } from '../core/CacheEntry';
 import { preprocessSource } from '../utils/preprocessor';
 import { postProcessSvg } from '../utils/svgPostProcessor';
+// Type-only: erased at build time, so it doesn't affect the lazy require() below.
+import type * as NodeTikzjax from 'node-tikzjax';
 
 export class TikzRenderer {
     private readonly _svgCache = new Map<string, { svg?: string; error?: string }>();
@@ -82,10 +84,12 @@ export class TikzRenderer {
 
     private async _doRender(source: string): Promise<string> {
         await this._ensureLoaded();
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const nodeTikzjax = require('node-tikzjax');
-        const tex2svg = nodeTikzjax.default as (src: string, opts: Record<string, unknown>) => Promise<string>;
-        const loadFn = nodeTikzjax.load as (() => Promise<void>) | undefined;
+        // Must require() lazily, not import: bootstrap.js reads globalThis.__MARP_TIKZ_TEX_DIR
+        // at module-evaluation time, and that's only set once main.ts's onload() has run.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires -- see comment above
+        const nodeTikzjax = require('node-tikzjax') as typeof NodeTikzjax;
+        const tex2svg = nodeTikzjax.default;
+        const loadFn = nodeTikzjax.load;
 
         let processed = preprocessSource(source);
         processed = processed.replace(
@@ -142,7 +146,7 @@ export class TikzRenderer {
     }
 
     private _extractTexError(err: unknown): string {
-        const msg = (err as any)?.message || String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         const texMatch = msg.match(/!(.*?)(?:\n|$)/);
         if (texMatch) { return `TeX compilation failed: ${texMatch[1].trim()}`; }
         if (msg.includes('timed out')) { return msg; }
@@ -163,7 +167,7 @@ export class TikzRenderer {
         if (this._tikzjaxLoadPromise) { return this._tikzjaxLoadPromise; }
         this._tikzjaxLoadPromise = (async () => {
             this.log('Loading node-tikzjax...');
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            // eslint-disable-next-line @typescript-eslint/no-var-requires -- must load lazily, see _doRender
             require('node-tikzjax');
             this._tikzjaxLoaded = true;
             this.log('node-tikzjax loaded');
