@@ -106,6 +106,11 @@ export class TikzRenderer {
         // disableSanitize skips jsdom in dvi2svg — jsdom uses the deprecated vm
         // module and is very slow in Electron's renderer process. We extract the
         // SVG element ourselves using a lightweight regex instead.
+        //
+        // esbuild.config.mjs's fix-tikzjax-dvi2svg patch + `external: ["jsdom"]` rely on
+        // this always being true: jsdom is deliberately left out of main.js to keep the
+        // bundle size down. Flipping this to false without also reverting that config
+        // will throw "Cannot find module 'jsdom'" at runtime.
         const svgPromise = tex2svg(processed, {
             showConsole: true,
             texPackages: this._detectPackages(processed),

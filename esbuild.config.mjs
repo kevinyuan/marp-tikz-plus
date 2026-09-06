@@ -76,6 +76,44 @@ const wasm = {
   },
 };
 
+// Patch node-tikzjax dvi2svg.js: load jsdom lazily instead of unconditionally at
+// module scope. TikzRenderer always calls dvi2svg with disableSanitize: true (jsdom's
+// createContextualFragment/querySelector path is skipped entirely — see TikzRenderer.ts),
+// but the unpatched module still eagerly `require("jsdom")`s and constructs a JSDOM
+// instance on every render regardless. jsdom pulls in a large dependency tree (tr46,
+// whatwg-url, tough-cookie, parse5, saxes, cssstyle, ...) that main.js otherwise ships
+// for a code path this plugin never exercises. Moving both the require and the JSDOM
+// construction past the disableSanitize early-return keeps behavior identical for
+// disableSanitize: false callers while letting esbuild's bundling reflect that jsdom
+// is conditional, not a hard dependency of every render.
+const fixTikzjaxDvi2svg = {
+  name: "fix-tikzjax-dvi2svg",
+  setup(build) {
+    build.onLoad(
+      { filter: /node-tikzjax\/dist\/dvi2svg\.js$/ },
+      async (args) => {
+        let src = await fs.promises.readFile(args.path, "utf8");
+        src = src.replace('const jsdom_1 = require("jsdom");\n', "");
+        src = src.replace(
+          "    let html = '';\n    const dom = new jsdom_1.JSDOM(`<!DOCTYPE html>`);\n    const document = dom.window.document;\n",
+          "    let html = '';\n"
+        );
+        src = src.replace(
+          "    if (options.disableSanitize) {\n        return html;\n    }\n    // Fix errors in the generated HTML.\n",
+          "    if (options.disableSanitize) {\n        return html;\n    }\n" +
+          "    // jsdom is only needed for the sanitize/embedFontCss/optimize path below,\n" +
+          "    // so load it lazily to keep it off the disableSanitize fast path.\n" +
+          "    const { JSDOM } = require(\"jsdom\");\n" +
+          "    const dom = new JSDOM(`<!DOCTYPE html>`);\n" +
+          "    const document = dom.window.document;\n" +
+          "    // Fix errors in the generated HTML.\n"
+        );
+        return { contents: src, loader: "js" };
+      }
+    );
+  },
+};
+
 // Patch require("punycode/") — tr46/tough-cookie use this pattern to explicitly
 // target the npm punycode package rather than the deprecated Node built-in.
 // esbuild leaves it as an external require, which fails at runtime in Electron
@@ -98,6 +136,11 @@ const context = await esbuild.context({
   external: [
     "obsidian",
     "electron",
+    // Only reachable through node-tikzjax's dvi2svg disableSanitize: false branch, which
+    // this plugin never takes (see TikzRenderer.ts and fix-tikzjax-dvi2svg above). Excluding
+    // it drops jsdom's own dependency tree (tr46, whatwg-url, tough-cookie, parse5, saxes,
+    // cssstyle, ...) from main.js, which was a large share of the pre-optimization bundle size.
+    "jsdom",
     "@codemirror/autocomplete",
     "@codemirror/collab",
     "@codemirror/commands",
@@ -112,7 +155,7 @@ const context = await esbuild.context({
     ...builtinModules,
     ...builtinModules.map(m => `node:${m}`),
   ],
-  plugins: [fixTikzjaxPaths, fixPunycode],
+  plugins: [fixTikzjaxPaths, fixTikzjaxDvi2svg, fixPunycode],
   platform: "node",
   format: "cjs",
   target: "es2018",
