@@ -1,12 +1,18 @@
 # Marp Plus
 
-**Build presentations the way you build software.** Author [Marp](https://marp.app/) slide decks inside your vault with an AI-friendly workflow, a professional authoring experience, and the precision that scientific and engineering presentations demand: TikZ/LaTeX diagrams, a **Slide Navigator**, a **Speaker Notes panel**, and one-click **PPTX/PDF export** with native math objects.
+Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--marp--plus-black?logo=github)](https://github.com/kevinyuan/vscode-marp-plus) [![VS Marketplace](https://vsmarketplacebadges.dev/installs-short/kevinyuan.vscode-tikzjax.svg?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
+
+**Build presentations the way you build software.** Marp Plus turns your vault into a workbench for [Marp](https://marp.app/) slide decks with an AI-friendly workflow, a professional authoring experience, and the precision that scientific and engineering presentations demand.
+
+- **AI-friendly.** Every part of a deck — slides, theme, diagrams, speaker notes — is a source file you or an agent can generate, review and diff, wired together with `%!include`. Whatever writes to disk, the preview is fresh on the next save.
+- **Engineering precision.** Circuits, plots, chemical structures, commutative diagrams and any other TikZ/LaTeX figure render as vector graphics, identically in the preview and in the exported file.
+- **A professional authoring experience.** A slide navigator with thumbnails and outline, a live speaker notes panel, and one-click export to editable PPTX (native text, math and tables) or PDF.
+
+The same diagrams and includes also work in the ordinary Markdown preview, so nothing here is limited to slides.
 
 > Desktop only. Rendering runs locally via a WASM-based TeX engine — no internet required.
 
 _Marp Plus is an independent third-party plugin. It is not affiliated with, endorsed by, or sponsored by the Marp team._
-
-Also available for VS Code: [![GitHub](https://img.shields.io/badge/GitHub-vscode--marp--plus-black?logo=github)](https://github.com/kevinyuan/vscode-marp-plus) [![VS Marketplace](https://vsmarketplacebadges.dev/installs-short/kevinyuan.vscode-tikzjax.svg?label=VS%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=kevinyuan.vscode-tikzjax) [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/kevinyuan/vscode-tikzjax?label=Open%20VSX&logo=vscodium)](https://open-vsx.org/extension/kevinyuan/vscode-tikzjax)
 
 ---
 
@@ -313,13 +319,17 @@ Open **Settings → Community Plugins → Marp Plus**:
 
 ## Acknowledgments
 
+- [Marp](https://marp.app/) by the Marp team — the slide ecosystem this plugin builds on
 - [node-tikzjax](https://github.com/drgrice1/node-tikzjax) by @drgrice1 — WASM-based TeX rendering engine
-- [TikZJax](https://github.com/kisonecat/tikzjax) by @kisonecat — original browser-based TikZ compiler
 - [obsidian-tikzjax](https://github.com/artisticat1/obsidian-tikzjax) by @artisticat1 — original Obsidian TikZ plugin
-- [@marp-team/marp-core](https://github.com/marp-team/marp-core) — Marp slide rendering engine
+- [TikZJax](https://github.com/kisonecat/tikzjax) by @kisonecat — original browser-based TikZ compiler
 
 ---
 
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+**Enjoy building your next deck!** If you encounter issues or have suggestions, please [file an issue on GitHub](https://github.com/kevinyuan/obsidian-marp-plus/issues).
