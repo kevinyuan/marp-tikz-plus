@@ -1,4 +1,4 @@
-import { Plugin, MarkdownPostProcessorContext, TFile, Notice, WorkspaceLeaf } from 'obsidian';
+import { Plugin, MarkdownPostProcessorContext, MarkdownView, TFile, Notice, WorkspaceLeaf } from 'obsidian';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -10,6 +10,14 @@ import { MarpTikzSettings, DEFAULT_SETTINGS } from './src/settings/types';
 import { MarpTikzSettingsTab } from './src/settings/SettingsTab';
 import { isMarpFile } from './src/marp/slideParser';
 import { MarpView, MARP_VIEW_TYPE } from './src/marp/MarpView';
+import { generateHash } from './src/utils/hash';
+import { setSanitizedHtml } from './src/utils/sanitizeHtml';
+import { getVaultBasePath } from './src/utils/vaultPath';
+
+/** Window augmented with the TEX_DIR override read by node-tikzjax's bundled bootstrap.js. */
+interface MarpTikzWindow extends Window {
+    __MARP_TIKZ_TEX_DIR?: string;
+}
 
 export default class MarpTikzPlugin extends Plugin {
     settings!: MarpTikzSettings;
@@ -20,7 +28,7 @@ export default class MarpTikzPlugin extends Plugin {
     private cacheManager!: CacheManager;
     private includeWatchers = new Map<string, fs.FSWatcher>();
     private marpIncludeWatchers = new Map<string, fs.FSWatcher[]>();
-    private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    private debounceTimers = new Map<string, number>();
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -28,10 +36,10 @@ export default class MarpTikzPlugin extends Plugin {
         // Set TEX_DIR for bootstrap.js before any rendering.
         // __dirname in Electron's renderer may resolve to the Electron binary
         // directory; use the Obsidian Plugin API for the correct plugin path.
-        const vaultBase = (this.app.vault.adapter as any).basePath as string;
+        const vaultBase = getVaultBasePath(this.app);
         const pluginRelDir = this.manifest.dir ?? `.obsidian/plugins/${this.manifest.id}`;
-        (globalThis as any).__MARP_TIKZ_TEX_DIR = path.join(vaultBase, pluginRelDir, 'tex');
-        console.log('[MarpTikz] TEX_DIR set:', (globalThis as any).__MARP_TIKZ_TEX_DIR);
+        const texDir = path.join(vaultBase, pluginRelDir, 'tex');
+        (window as MarpTikzWindow).__MARP_TIKZ_TEX_DIR = texDir;
 
         this.parser = new DocumentParser();
         this.cacheManager = new CacheManager(
@@ -45,7 +53,7 @@ export default class MarpTikzPlugin extends Plugin {
             this.cacheManager,
             () => this.settings.renderTimeout,
             () => document.body.classList.contains('theme-dark'),
-            (msg) => console.log('[MarpTikz]', msg),
+            () => { /* render-progress messages are surfaced via the in-editor status UI, not the console */ },
         );
 
         this.addSettingTab(new MarpTikzSettingsTab(this.app, this));
@@ -61,8 +69,6 @@ export default class MarpTikzPlugin extends Plugin {
 
         this._registerCommands();
         this._registerEventHandlers();
-
-        console.log('[MarpTikz] Plugin loaded');
     }
 
     onunload(): void {
@@ -70,7 +76,7 @@ export default class MarpTikzPlugin extends Plugin {
         this.includeWatchers.clear();
         for (const ws of this.marpIncludeWatchers.values()) { ws.forEach(w => w.close()); }
         this.marpIncludeWatchers.clear();
-        for (const t of this.debounceTimers.values()) { clearTimeout(t); }
+        for (const t of this.debounceTimers.values()) { window.clearTimeout(t); }
         this.debounceTimers.clear();
     }
 
@@ -115,7 +121,7 @@ export default class MarpTikzPlugin extends Plugin {
             ? this.app.vault.getAbstractFileByPath(ctx.sourcePath)?.path ?? ctx.sourcePath
             : '';
         const absPath = filePath
-            ? path.join((this.app.vault.adapter as any).basePath, filePath)
+            ? path.join(getVaultBasePath(this.app), filePath)
             : '';
 
         codeBlocks.forEach((codeEl) => {
@@ -126,34 +132,25 @@ export default class MarpTikzPlugin extends Plugin {
             const source = this._resolveInclude(rawSource, absPath);
             if (source === null) {
                 // Include error — show error block
-                const errDiv = document.createElement('div');
-                errDiv.className = 'tikz-error';
-                errDiv.innerHTML = `<div class="tikz-error-title">⚠ Include Error</div><pre class="tikz-error-message">${escapeHtml(rawSource)}</pre>`;
-                pre.replaceWith(errDiv);
+                pre.replaceWith(buildErrorBlock('Include Error', rawSource));
                 return;
             }
 
-            const hash = require('./src/utils/hash').generateHash(source.trim());
+            const hash = generateHash(source.trim());
             const cached = this.renderer.getSvg(hash);
 
             if (cached?.svg) {
-                const div = document.createElement('div');
-                div.className = 'tikz-diagram';
-                div.innerHTML = cached.svg;
+                const div = createDiv({ cls: 'tikz-diagram' });
+                setSanitizedHtml(div, cached.svg);
                 pre.replaceWith(div);
             } else if (cached?.error) {
-                const errDiv = document.createElement('div');
-                errDiv.className = 'tikz-error';
-                errDiv.innerHTML = `<div class="tikz-error-title">⚠ Rendering Error</div><pre class="tikz-error-message">${escapeHtml(cached.error)}</pre>
-                    <button class="tikz-retry">Retry</button>`;
+                const errDiv = buildErrorBlock('Rendering Error', cached.error, true);
                 errDiv.querySelector('.tikz-retry')?.addEventListener('click', () => {
-                    this._retryBlock(hash, source, errDiv);
+                    void this._retryBlock(hash, source, errDiv);
                 });
                 pre.replaceWith(errDiv);
             } else {
-                const spinner = document.createElement('div');
-                spinner.className = 'tikz-loading';
-                spinner.textContent = '⏳ Rendering TikZ diagram…';
+                const spinner = createDiv({ cls: 'tikz-loading', text: '⏳ Rendering TikZ diagram…' });
                 pre.replaceWith(spinner);
 
                 // Trigger background render
@@ -175,7 +172,7 @@ export default class MarpTikzPlugin extends Plugin {
         const existing = this.debounceTimers.get(key);
         if (existing) { return; }
 
-        const timer = setTimeout(async () => {
+        const timer = window.setTimeout(async () => {
             this.debounceTimers.delete(key);
             const file = this.app.vault.getAbstractFileByPath(filePath);
             if (!(file instanceof TFile)) { return; }
@@ -186,10 +183,9 @@ export default class MarpTikzPlugin extends Plugin {
             await this.renderer.renderBlocks(blocks, () => {
                 // Refresh the markdown view after each block renders
                 this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
-                    const view = leaf.view as any;
-                    if (view.file?.path === filePath) {
+                    if (leaf.view instanceof MarkdownView && leaf.view.file?.path === filePath) {
                         // Trigger re-render by re-reading the file
-                        view.previewMode?.rerender?.(true);
+                        leaf.view.previewMode?.rerender?.(true);
                     }
                 });
             });
@@ -208,12 +204,11 @@ export default class MarpTikzPlugin extends Plugin {
         await this.renderer.renderBlocks([{ hash, source }]);
         const cached = this.renderer.getSvg(hash);
         if (cached?.svg) {
-            const div = document.createElement('div');
-            div.className = 'tikz-diagram';
-            div.innerHTML = cached.svg;
+            const div = createDiv({ cls: 'tikz-diagram' });
+            setSanitizedHtml(div, cached.svg);
             el.replaceWith(div);
         } else {
-            el.innerHTML = `<div class="tikz-error-title">⚠ Retry failed</div><pre class="tikz-error-message">${escapeHtml(cached?.error ?? 'Unknown error')}</pre>`;
+            el.replaceWith(buildErrorBlock('Retry failed', cached?.error ?? 'Unknown error'));
         }
     }
 
@@ -260,7 +255,7 @@ export default class MarpTikzPlugin extends Plugin {
         if (leaf.view instanceof MarpView) {
             leaf.view.setFile(file);
         }
-        this.app.workspace.revealLeaf(leaf);
+        await this.app.workspace.revealLeaf(leaf);
     }
 
     private _getMarpView(): MarpView | null {
@@ -330,7 +325,7 @@ export default class MarpTikzPlugin extends Plugin {
             callback: async () => {
                 const file = this._getActiveMdFile();
                 if (!file) { return; }
-                const absPath = path.join((this.app.vault.adapter as any).basePath, file.path);
+                const absPath = path.join(getVaultBasePath(this.app), file.path);
                 const content = await this.app.vault.read(file);
                 const blocks = this.parser.parse(content, absPath);
                 for (const b of blocks) { await this.cacheManager.invalidate(b.hash); }
@@ -371,7 +366,7 @@ export default class MarpTikzPlugin extends Plugin {
 
     private async _runExport(file: TFile, format: 'pptx' | 'pdf'): Promise<void> {
         const { PptxExporter } = await import('./src/marp/PptxExporter');
-        const absBase = (this.app.vault.adapter as any).basePath;
+        const absBase = getVaultBasePath(this.app);
         const absPath = path.join(absBase, file.path);
         const rawContent = await this.app.vault.read(file);
 
@@ -383,7 +378,7 @@ export default class MarpTikzPlugin extends Plugin {
         const exporter = new PptxExporter(
             this.parser,
             (source: string) => this.renderer.renderTikzToSvg(source),
-            (msg: string) => console.log('[PptxExport]', msg),
+            () => { /* export-progress messages are surfaced via the Notice above, not the console */ },
         );
 
         try {
@@ -406,32 +401,32 @@ export default class MarpTikzPlugin extends Plugin {
         // Re-render on file modify with debounce
         this.registerEvent(this.app.vault.on('modify', (file) => {
             if (!(file instanceof TFile) || file.extension !== 'md') { return; }
-            const absBase = (this.app.vault.adapter as any).basePath;
-            const absPath = path.join(absBase, file.path);
+            const absPath = path.join(getVaultBasePath(this.app), file.path);
 
             const key = file.path;
             const existing = this.debounceTimers.get(key);
-            if (existing) { clearTimeout(existing); }
+            if (existing) { window.clearTimeout(existing); }
 
-            const timer = setTimeout(async () => {
-                this.debounceTimers.delete(key);
-                const content = await this.app.vault.read(file);
-                const blocks = this.parser.parse(content, absPath);
-                // A deck with no tikz block still has to refresh: its text,
-                // includes, images and speaker notes may all have changed.
-                // Gating the whole handler on blocks.length left such decks stale.
-                if (blocks.length > 0) {
-                    await this.renderer.renderBlocks(blocks, () => {
-                        this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
-                            const view = leaf.view as any;
-                            if (view.file?.path === file.path) {
-                                view.previewMode?.rerender?.(true);
-                            }
+            const timer = window.setTimeout(() => {
+                void (async () => {
+                    this.debounceTimers.delete(key);
+                    const content = await this.app.vault.read(file);
+                    const blocks = this.parser.parse(content, absPath);
+                    // A deck with no tikz block still has to refresh: its text,
+                    // includes, images and speaker notes may all have changed.
+                    // Gating the whole handler on blocks.length left such decks stale.
+                    if (blocks.length > 0) {
+                        await this.renderer.renderBlocks(blocks, () => {
+                            this.app.workspace.getLeavesOfType('markdown').forEach(leaf => {
+                                if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+                                    leaf.view.previewMode?.rerender?.(true);
+                                }
+                            });
                         });
-                    });
-                }
-                this._updateIncludeWatchers(file.path, absPath);
-                this._refreshMarpViews(file);
+                    }
+                    this._updateIncludeWatchers(file.path, absPath);
+                    this._refreshMarpViews(file);
+                })();
             }, 1000);
 
             this.debounceTimers.set(key, timer);
@@ -440,8 +435,7 @@ export default class MarpTikzPlugin extends Plugin {
         // When active file changes, update Marp views
         this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => {
             if (!leaf) { return; }
-            const view = leaf.view as any;
-            const file = view?.file;
+            const file = leaf.view instanceof MarkdownView ? leaf.view.file : null;
             if (!(file instanceof TFile) || file.extension !== 'md') { return; }
 
             this.app.workspace.getLeavesOfType(MARP_VIEW_TYPE).forEach(l => {
@@ -466,10 +460,11 @@ export default class MarpTikzPlugin extends Plugin {
     }
 }
 
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+/** Builds a `.tikz-error` block from plain text — no HTML parsing, so nothing needs escaping. */
+function buildErrorBlock(title: string, message: string, withRetry = false): HTMLElement {
+    const errDiv = createDiv({ cls: 'tikz-error' });
+    errDiv.createDiv({ cls: 'tikz-error-title', text: `⚠ ${title}` });
+    errDiv.createEl('pre', { cls: 'tikz-error-message', text: message });
+    if (withRetry) { errDiv.createEl('button', { cls: 'tikz-retry', text: 'Retry' }); }
+    return errDiv;
 }

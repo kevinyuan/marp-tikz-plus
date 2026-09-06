@@ -25,7 +25,7 @@ export class CacheManager {
 
     private _data: CacheData = { index: [], entries: {} };
     private readonly _save: SaveFn;
-    private _saveTimer: ReturnType<typeof setTimeout> | null = null;
+    private _saveTimer: number | null = null;
 
     constructor(save: SaveFn, load: LoadFn) {
         this._save = save;
@@ -89,8 +89,8 @@ export class CacheManager {
     }
 
     private _scheduleSave(): void {
-        if (this._saveTimer) { clearTimeout(this._saveTimer); }
-        this._saveTimer = setTimeout(() => {
+        if (this._saveTimer) { window.clearTimeout(this._saveTimer); }
+        this._saveTimer = window.setTimeout(() => {
             this._saveTimer = null;
             this._save(this._data).catch(() => { /* ignore */ });
         }, 1000);

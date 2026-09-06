@@ -391,10 +391,10 @@ function runMarpCli(
         });
 
         // Safety: kill the process if it's still running when timeout fires
-        const timer = setTimeout(() => {
+        const timer = window.setTimeout(() => {
             child.kill('SIGKILL');
         }, timeoutMs + 5000);
-        child.on('exit', () => clearTimeout(timer));
+        child.on('exit', () => window.clearTimeout(timer));
     });
 }
 

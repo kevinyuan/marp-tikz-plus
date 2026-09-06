@@ -1,13 +1,18 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { Marp } from '@marp-team/marp-core';
 import * as path from 'path';
 import { isMarpFile, parseSpeakerNotes } from './slideParser';
 import { generateHash } from '../utils/hash';
 import { renderNotesMarkdown, escapeHtml as _escapeHtml } from '../utils/notesMarkdown';
 import { resolveLocalResources, toVaultRelative } from '../utils/resolveResources';
+import { getVaultBasePath } from '../utils/vaultPath';
+import { setSanitizedHtml } from '../utils/sanitizeHtml';
+import { MarpStyleSheet } from '../utils/marpStyleSheet';
 import type MarpTikzPlugin from '../../main';
 
 export const MARP_VIEW_TYPE = 'marp-tikz-preview';
 
+// Kept in sync with the .marp-thumb-slide rule in styles.css.
 const SLIDE_W = 1280;
 const SLIDE_H = 720;
 const SIDEBAR_WIDTHS = { small: 172, big: 232, outline: 232 } as const;
@@ -15,7 +20,7 @@ type ViewMode = 'small' | 'big' | 'outline';
 
 export class MarpView extends ItemView {
     private _file: TFile | null = null;
-    private _pendingUpdate: ReturnType<typeof setTimeout> | null = null;
+    private _pendingUpdate: number | null = null;
 
     // Sidebar state (persisted across re-renders)
     private _sidebarVisible = true;
@@ -26,6 +31,8 @@ export class MarpView extends ItemView {
 
     // Keyboard nav cleanup (re-attached on each render)
     private _keyNavCleanup: (() => void) | null = null;
+
+    private readonly _marpStyles = new MarpStyleSheet();
 
     constructor(leaf: WorkspaceLeaf, private readonly plugin: MarpTikzPlugin) {
         super(leaf);
@@ -82,8 +89,8 @@ export class MarpView extends ItemView {
      * image is re-fetched rather than served from cache.
      */
     private _resolveImages(html: string, baseDir: string): string {
-        const adapter = this.app.vault.adapter as any;
-        const absBase = adapter.basePath as string;
+        const absBase = getVaultBasePath(this.app);
+        const adapter = this.app.vault.adapter;
         return resolveLocalResources(html, (rel) => {
             // Outside the vault Obsidian cannot serve the file, so leave it alone.
             const vaultPath = toVaultRelative(absBase, baseDir, rel);
@@ -97,8 +104,8 @@ export class MarpView extends ItemView {
     }
 
     private _scheduleUpdate(): void {
-        if (this._pendingUpdate) { clearTimeout(this._pendingUpdate); }
-        this._pendingUpdate = setTimeout(() => {
+        if (this._pendingUpdate) { window.clearTimeout(this._pendingUpdate); }
+        this._pendingUpdate = window.setTimeout(() => {
             this._pendingUpdate = null;
             this._render().catch(e => console.error('[MarpView]', e));
         }, 300);
@@ -111,7 +118,7 @@ export class MarpView extends ItemView {
         if (!this._file) { return; }
         const rawContent = await this.app.vault.read(this._file);
 
-        const absBase = (this.app.vault.adapter as any).basePath as string;
+        const absBase = getVaultBasePath(this.app);
         const baseDir = path.dirname(path.join(absBase, this._file.path));
         const resolver = this.plugin.markdownIncludeResolver;
         resolver.clearTracked();
@@ -127,7 +134,6 @@ export class MarpView extends ItemView {
             return;
         }
 
-        const { Marp } = require('@marp-team/marp-core');
         const marp = new Marp({ html: true });
 
         // Substitute cached TikZ SVGs; kick off rendering for uncached blocks
@@ -174,166 +180,13 @@ export class MarpView extends ItemView {
         this.contentEl.empty();
         this.contentEl.addClass('marp-tikz-view');
 
-        // ── Styles (Marp CSS + our layout) ─────────────────────────────────
-        const style = this.contentEl.createEl('style');
-        style.textContent = css + `
-/* ── Layout ─────────────────────────────────────────────────────────────── */
-.marp-tikz-view {
-    display: flex; flex-direction: column;
-    height: 100%; overflow: hidden;
-    background: var(--background-secondary);
-    position: relative;
-}
-/* Toggle button (hamburger, shows when sidebar is hidden) */
-.marp-sidebar-toggle {
-    position: absolute; top: 8px; left: 8px; z-index: 20;
-    width: 28px; height: 28px; display: flex;
-    align-items: center; justify-content: center;
-    cursor: pointer;
-    background: var(--background-modifier-box-shadow);
-    color: var(--text-normal);
-    border-radius: 4px; font-size: 14px;
-    opacity: 0.7; transition: opacity 0.15s; user-select: none;
-}
-.marp-sidebar-toggle:hover { opacity: 1; }
-.marp-sidebar-toggle.hidden { display: none; }
-
-/* Body: sidebar + main */
-.marp-body { display: flex; flex: 1; overflow: hidden; }
-
-/* Sidebar */
-.marp-sidebar {
-    flex-shrink: 0; overflow-y: auto; overflow-x: hidden;
-    background: var(--background-primary);
-    border-right: 1px solid var(--background-modifier-border);
-    transition: width 0.15s; outline: none;
-}
-.marp-sidebar.collapsed { width: 0 !important; border-right: none; }
-
-/* Toolbar inside sidebar */
-.marp-sidebar-toolbar {
-    position: sticky; top: 0; z-index: 3;
-    display: flex; gap: 2px; padding: 6px 4px;
-    background: var(--background-primary);
-    border-bottom: 1px solid var(--background-modifier-border);
-}
-.marp-toolbar-btn {
-    flex: 0 0 24px; width: 24px; height: 24px;
-    display: flex; align-items: center; justify-content: center;
-    border: none; border-radius: 3px; cursor: pointer;
-    background: transparent;
-    color: var(--text-normal); opacity: 0.6;
-    font-size: 13px; transition: opacity 0.15s, background 0.15s;
-    padding: 0;
-}
-.marp-toolbar-btn:hover { opacity: 1; background: var(--background-modifier-hover); }
-.marp-toolbar-btn.active { opacity: 1; background: var(--background-modifier-active-hover); }
-.marp-toolbar-spacer { flex: 1; }
-
-/* Thumbnails */
-.marp-thumb {
-    position: relative; cursor: pointer; margin: 0 8px 6px;
-    border-radius: 3px; overflow: hidden;
-    border: 2px solid transparent; transition: border-color 0.15s;
-}
-.marp-thumb:hover { border-color: var(--interactive-accent); }
-.marp-thumb.active { border-color: var(--interactive-accent); }
-.marp-thumb-num {
-    position: absolute; top: 2px; left: 4px;
-    font-size: 9px; font-weight: bold; color: #fff;
-    background: rgba(0,0,0,0.55); border-radius: 2px;
-    padding: 0 3px; z-index: 2; line-height: 1.5;
-    font-family: system-ui, sans-serif;
-}
-.marp-thumb-viewport { overflow: hidden; position: relative; }
-.marp-thumb-slide {
-    position: absolute; top: 0; left: 0;
-    width: ${SLIDE_W}px; height: ${SLIDE_H}px;
-    overflow: hidden; box-sizing: border-box;
-    transform-origin: 0 0;
-}
-
-/* Outline mode */
-.marp-outline-item {
-    cursor: pointer; padding: 4px 8px; border-radius: 3px; margin: 0 4px 2px;
-    font-size: 12px; line-height: 1.6;
-    color: var(--text-normal);
-    display: flex; align-items: baseline; gap: 6px;
-    transition: background 0.1s;
-}
-.marp-outline-item:hover { background: var(--background-modifier-hover); }
-.marp-outline-item.active { background: var(--interactive-accent); color: var(--text-on-accent); }
-.marp-outline-num { opacity: 0.5; font-size: 11px; min-width: 16px; }
-.marp-outline-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Right column: slides + notes stacked vertically */
-.marp-right-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-
-/* Main slide scroll area */
-.marp-scroll-area { flex: 1; overflow-y: auto; padding: 16px; }
-
-/* Slides: each SVG scales to container width (SVG viewBox handles the rest) */
-.marp-scroll-area svg[data-marpit-svg] {
-    width: 100%; height: auto; display: block;
-    margin-bottom: 16px;
-    box-shadow: 0 2px 14px rgba(0,0,0,.3); border-radius: 4px;
-}
-.marp-tikz-view .tikz-in-marp svg { max-width: 100%; height: auto; }
-
-/* Speaker notes — bottom panel */
-.marp-notes-panel {
-    flex-shrink: 0;
-    display: flex; flex-direction: column;
-    background: var(--background-primary);
-    border-top: 1px solid var(--background-modifier-border);
-    font-size: 13px; line-height: 1.5; color: var(--text-normal);
-}
-.marp-notes-panel.collapsed { display: none; }
-.marp-notes-resize {
-    flex-shrink: 0; height: 5px; cursor: ns-resize;
-    background: transparent; transition: background 0.15s;
-}
-.marp-notes-resize:hover, .marp-notes-resize.dragging {
-    background: var(--interactive-accent);
-}
-.marp-notes-inner { flex: 1; overflow-y: auto; padding: 4px 16px 8px; }
-.marp-notes-header {
-    font-size: 11px; font-weight: bold; opacity: 0.5;
-    margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.marp-notes-content { line-height: 1.6; }
-.marp-notes-content p { margin: 0 0 0.5em; }
-.marp-notes-content p:last-child { margin-bottom: 0; }
-.marp-notes-content h1, .marp-notes-content h2, .marp-notes-content h3,
-.marp-notes-content h4, .marp-notes-content h5, .marp-notes-content h6 {
-    margin: 0.4em 0 0.2em; font-size: 1em; font-weight: 600;
-}
-.marp-notes-content h1 { font-size: 1.15em; }
-.marp-notes-content h2 { font-size: 1.07em; }
-.marp-notes-content h4, .marp-notes-content h5, .marp-notes-content h6 {
-    font-size: 0.95em; opacity: 0.85;
-}
-.marp-notes-content > :first-child { margin-top: 0; }
-.marp-notes-content code { font-size: 0.85em; }
-.marp-notes-content pre { margin: 0.4em 0; white-space: pre-wrap; }
-.marp-notes-content ul, .marp-notes-content ol { margin: 0.2em 0; padding-left: 1.4em; }
-.marp-notes-content table { border-collapse: collapse; margin: 0.4em 0; }
-.marp-notes-content th, .marp-notes-content td {
-    border: 1px solid var(--background-modifier-border); padding: 2px 6px;
-}
-.marp-notes-content hr {
-    border: none; border-top: 1px solid var(--background-modifier-border);
-    margin: 0.6em 0;
-}
-.marp-notes-content:empty::after {
-    content: "No speaker notes for this slide.";
-    opacity: 0.4; font-style: italic;
-}
-        `;
+        // Marp's per-file theme CSS changes with the file's frontmatter, so it
+        // can't live in the static styles.css — apply it via a constructed
+        // stylesheet instead of an injected <style> element.
+        this._marpStyles.update(css);
 
         // ── Toggle button (shown when sidebar is collapsed) ────────────────
-        const toggleBtn = this.contentEl.createDiv({ cls: 'marp-sidebar-toggle' });
-        toggleBtn.innerHTML = '☰';
+        const toggleBtn = this.contentEl.createDiv({ cls: 'marp-sidebar-toggle', text: '☰' });
         toggleBtn.title = 'Show slide navigator';
         if (this._sidebarVisible) { toggleBtn.addClass('hidden'); }
         toggleBtn.addEventListener('click', () => {
@@ -364,7 +217,7 @@ export class MarpView extends ItemView {
         const modeBtns: Partial<Record<ViewMode, HTMLElement>> = {};
         (['small', 'big', 'outline'] as ViewMode[]).forEach(mode => {
             const btn = toolbar.createEl('button', { cls: 'marp-toolbar-btn' });
-            btn.innerHTML = modeIcons[mode];
+            setSanitizedHtml(btn, modeIcons[mode]);
             btn.title = modeTitles[mode];
             if (this._viewMode === mode) { btn.addClass('active'); }
             btn.addEventListener('click', () => {
@@ -378,7 +231,7 @@ export class MarpView extends ItemView {
 
         // Speaker notes toggle — horizontal-split panel icon
         const notesBtn = toolbar.createEl('button', { cls: 'marp-toolbar-btn' + (this._notesVisible ? ' active' : '') });
-        notesBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>';
+        setSanitizedHtml(notesBtn, '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="13" x2="21" y2="13"/></svg>');
         notesBtn.title = 'Speaker notes';
         notesBtn.addEventListener('click', () => {
             this._notesVisible = !this._notesVisible;
@@ -404,7 +257,7 @@ export class MarpView extends ItemView {
 
         // ── Scroll area (main slides) ─────────────────────────────────────
         const scrollArea = rightCol.createDiv({ cls: 'marp-scroll-area' });
-        scrollArea.innerHTML = html;  // renders div.marpit with all SVGs
+        setSanitizedHtml(scrollArea, html);  // renders div.marpit with all SVGs
 
         // ── Speaker notes panel (bottom of right column only) ────────────
         const notesPanel = rightCol.createDiv({ cls: 'marp-notes-panel' + (this._notesVisible ? '' : ' collapsed') });
@@ -438,13 +291,19 @@ export class MarpView extends ItemView {
             notesHeader.textContent = `Speaker Notes — Slide ${this._currentSlideIdx + 1}`;
             const rawNote = notes[this._currentSlideIdx] ?? '';
             if (!rawNote) {
-                notesContent.innerHTML = '';
+                notesContent.empty();
             } else {
+                let rendered: string;
                 try {
-                    const rendered = renderNotesMarkdown(rawNote);
-                    notesContent.innerHTML = rendered || `<pre>${_escapeHtml(rawNote)}</pre>`;
+                    rendered = renderNotesMarkdown(rawNote);
                 } catch {
-                    notesContent.innerHTML = `<pre>${_escapeHtml(rawNote)}</pre>`;
+                    rendered = '';
+                }
+                if (rendered) {
+                    setSanitizedHtml(notesContent, rendered);
+                } else {
+                    notesContent.empty();
+                    notesContent.createEl('pre', { text: rawNote });
                 }
             }
         };
@@ -524,13 +383,11 @@ export class MarpView extends ItemView {
                     const thumb = sidebar.createDiv({ cls: 'marp-thumb' + (i === this._currentSlideIdx ? ' active' : '') });
                     thumb.title = `Slide ${i + 1}`;
 
-                    const numBadge = thumb.createDiv({ cls: 'marp-thumb-num', text: String(i + 1) });
-                    numBadge.style.cssText = ''; // override any inherited styles
+                    thumb.createDiv({ cls: 'marp-thumb-num', text: String(i + 1) });
 
                     if (origSection) {
                         const cs = window.getComputedStyle(origSection);
-                        const slideDiv = document.createElement('div');
-                        slideDiv.className = 'marp-thumb-slide';
+                        const slideDiv = createDiv({ cls: 'marp-thumb-slide' });
                         slideDiv.style.transform = `scale(${scale})`;
                         // Copy key visual styles so thumbnail matches slide appearance
                         const copyProps = [
@@ -543,8 +400,8 @@ export class MarpView extends ItemView {
                             'gridColumn', 'gridRow', 'gridArea',
                             'gap', 'columnGap', 'rowGap',
                             'columnCount', 'columnWidth',
-                        ] as const;
-                        copyProps.forEach(p => { (slideDiv.style as any)[p] = (cs as any)[p]; });
+                        ] as const satisfies readonly (keyof CSSStyleDeclaration)[];
+                        copyProps.forEach(p => { slideDiv.style[p] = cs[p]; });
 
                         // cloneNode preserves SVG namespaces (innerHTML round-trip can corrupt them)
                         origSection.childNodes.forEach(child => {
@@ -552,8 +409,7 @@ export class MarpView extends ItemView {
                         });
                         this._copyStyles(origSection, slideDiv, 10);
 
-                        const viewport = document.createElement('div');
-                        viewport.className = 'marp-thumb-viewport';
+                        const viewport = createDiv({ cls: 'marp-thumb-viewport' });
                         viewport.style.width = thumbW + 'px';
                         viewport.style.height = thumbH + 'px';
                         viewport.appendChild(slideDiv);
@@ -586,7 +442,7 @@ export class MarpView extends ItemView {
         slides.forEach(s => io.observe(s));
 
         // Build thumbnails after one frame so getComputedStyle has values
-        requestAnimationFrame(() => rebuildSidebarContent());
+        window.requestAnimationFrame(() => rebuildSidebarContent());
     }
 
     /** Recursively copy computed styles from orig to clone (mirrors original marp-thumbnails.js). */
@@ -616,17 +472,18 @@ export class MarpView extends ItemView {
                 'borderCollapse', 'borderSpacing',
                 'listStyleType', 'listStylePosition',
                 'opacity', 'verticalAlign', 'whiteSpace', 'overflow',
-            ] as const;
+            ] as const satisfies readonly (keyof CSSStyleDeclaration)[];
             props.forEach(p => {
-                const v = (cs as any)[p] as string;
-                if (v) { (ce.style as any)[p] = v; }
+                const v = cs[p];
+                if (v) { ce.style[p] = v; }
             });
             if (oe.children.length > 0) { this._copyStyles(oe, ce, maxDepth - 1); }
         }
     }
 
     async onClose(): Promise<void> {
-        if (this._pendingUpdate) { clearTimeout(this._pendingUpdate); }
+        if (this._pendingUpdate) { window.clearTimeout(this._pendingUpdate); }
         if (this._keyNavCleanup) { this._keyNavCleanup(); this._keyNavCleanup = null; }
+        this._marpStyles.detach();
     }
 }

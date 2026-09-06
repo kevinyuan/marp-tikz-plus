@@ -109,15 +109,15 @@ export class TikzRenderer {
             disableSanitize: true,
         }).then(result => { this.log('tex: TeX done, extracting SVG...'); return _extractSvg(result); });
 
-        let timer!: ReturnType<typeof setTimeout>;
+        let timer!: number;
         const timeoutPromise = new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error(`Render timed out after ${timeout}ms`)), timeout);
+            timer = window.setTimeout(() => reject(new Error(`Render timed out after ${timeout}ms`)), timeout);
         });
 
         try {
             return await Promise.race([svgPromise, timeoutPromise]);
         } finally {
-            clearTimeout(timer);
+            window.clearTimeout(timer);
         }
     }
 
