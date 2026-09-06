@@ -1,6 +1,6 @@
 export function preprocessSource(source: string): string {
     // Remove non-breaking spaces (U+00A0)
-    let processed = source.replace(/ /g, ' ');
+    let processed = source.replace(/\u00A0/g, ' ');
 
     const lines = processed.split('\n')
         .map(line => line.trim())

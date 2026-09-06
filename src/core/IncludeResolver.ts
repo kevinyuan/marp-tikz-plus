@@ -45,11 +45,12 @@ export class IncludeResolver {
             const content = fs.readFileSync(filePath, 'utf-8');
             this._fileCache.set(filePath, { content, mtimeMs: stat.mtimeMs, size: stat.size });
             return { ok: true, value: { filePath, content } };
-        } catch (err: any) {
+        } catch (err: unknown) {
             this._fileCache.delete(filePath);
-            const message = err?.code === 'ENOENT'
+            const code = err instanceof Error ? (err as NodeJS.ErrnoException).code : undefined;
+            const message = code === 'ENOENT'
                 ? `File not found: ${filePath}`
-                : `Failed to read file: ${filePath} — ${err?.message ?? err}`;
+                : `Failed to read file: ${filePath} — ${err instanceof Error ? err.message : String(err)}`;
             return { ok: false, error: { filePath, message } };
         }
     }
